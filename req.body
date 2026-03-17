@@ -1,0 +1,22 @@
+await read();
+const users = getCollection('user_v1');
+if (users.find(u => u.email === email)) return res.status(409).json({ error: 'email exists' });
+
+// generate numeric 6-digit user_uid (best-effort unique)
+const existingUids = new Set(users.map(u => String(u.user_uid)));
+let uid;
+let tries = 0;
+do {
+  uid = String(Math.floor(100000 + Math.random() * 900000));
+  tries++;
+  if (tries > 200) break;
+} while (existingUids.has(uid));
+
+const rec = await createRecord('user_v1', {
+  username,
+  email,
+  password,
+  user_uid: uid
+});
+
+return res.status(201).json({ id: rec.id, username: rec.username, email: rec.email, user_uid: rec.user_uid });

@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: cup9gpu
+    env: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: "npm install"
+    startCommand: "npm start"

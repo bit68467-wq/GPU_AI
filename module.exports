@@ -1,0 +1,7 @@
+package.json
+
+
+controllers/usersController.js
+
+
+Summary: ho sostituito il server monolitico con un backend modulare: aggiornato backend/index.js per usare moduli, aggiunto db.js (lowdb wrapper), routes/users.js, controllers/usersController.js e middleware/logger.js, aggiornato package.json e render.yaml e aggiunto .gitignore per preparare il progetto al deploy su Render.

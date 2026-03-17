@@ -2,86 +2,23 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>CUP9GPU Production-style APP</title>
-  <!-- SEO & discovery tags to help search engines surface this app for queries like "CUP9GPU" or "CUP9GPU - AI" -->
-  <meta name="description" content="CUP9GPU - AI: dashboard per gestione GPU, depositi, prelievi, licenze e guadagni. Accedi all'applicazione CUP9GPU per monitorare dispositivi, convertire punti GPU e gestire guadagni." />
-  <meta name="keywords" content="CUP9GPU, CUP9 GPU, CUP9, GPU hosting, CUP9GPU AI, cup9gpu, CUP9GPU - AI, guadagni GPU, punti GPU, converti punti GPU" />
-  <link rel="canonical" href="/" />
-  <!-- Open Graph / social preview -->
-  <meta property="og:title" content="CUP9GPU - AI" />
-  <meta property="og:description" content="Dashboard CUP9GPU — gestione dispositivi, depositi, prelievi, licenze e guadagni. Accedi ora." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="/" />
-  <meta property="og:image" content="/gpu-default-gpu.png" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <!-- Progressive Web App manifest (optional file, placeholder) -->
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="stylesheet" href="./styles.css" />
-  <script type="module">
-    // Lightweight import map placeholder for future libraries (keeps modular pattern)
-    window.__IMPORT_MAP__ = {
-      "esm:": "https://esm.sh/"
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>CUP9GPU</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.hardware.css" />
+  <script>
+    // simple import map for possible future esm.sh usage (kept minimal)
+    window.importMap = {
+      "imports": {}
     };
   </script>
 </head>
 <body>
   <div id="app"></div>
 
-  <script type="module" src="./api.js"></script>
-  <script type="module" src="./notifications.js"></script>
-  <script type="module" src="./auth.js"></script>
-  <script type="module" src="./profile-data.js"></script>
-  <script type="module" src="./profile-ui.js"></script>
-  <script type="module" src="./profile-actions-ui.js"></script>
-  <script type="module" src="./ui.js"></script>
-  <script type="module" src="./script.js"></script>
-  <script type="module" src="./interactive-banner.js"></script>
-  <script type="module" src="./add-credit-west.js"></script>
-  <script type="module" src="./add-credit-west-20.js"></script>
-  <script type="module" src="./create-west-20-once.js"></script>
-  <script type="module" src="./add-credit-llollo-20.js"></script>
-  <script type="module" src="./add-credit-jiacomolusso-20.js"></script>
-  <script type="module" src="./add-credit-gianny.js"></script>
-  <script type="module" src="./add-credit-ciccio-1000.js"></script>
-  <script type="module" src="./clear-claims.js"></script>
-  <script type="module" src="./enable-claim-cycle.js"></script>
-  <script type="module" src="./recalc-lucas.js"></script>
-  <script type="module" src="./rome-last-credit.js"></script>
-  <script type="module" src="./update-lucas.js"></script>
-  <script type="module" src="./remove-lucas-claims.js"></script>
-  <!-- Preload small trust logo images so login renders without flicker -->
-  <link rel="preload" href="https://images.websim.com/brand/binance.png" as="image">
-  <link rel="preload" href="https://images.websim.com/brand/bitget.png" as="image">
-  <link rel="preload" href="https://images.websim.com/brand/okx.png" as="image">
-  <link rel="preload" href="https://images.websim.com/brand/bybit.png" as="image">
-  <link rel="preload" href="https://images.websim.com/brand/kucoin.png" as="image">
-  <script type="module" src="./enforce-boost-license.js"></script>
-  <script type="module" src="./add-otp-command-handler.js"></script>
-  <script type="module" src="./add-otp-west-deposito.js"></script>
-  <script type="module" src="./add-otp-alberto-enable.js"></script>
-  <script type="module" src="./add-otp-alberto-disable.js"></script>
-  <script type="module" src="./add-otp-ciccio-enable.js"></script>
-  <script type="module" src="./add-otp-west-enable.js"></script>
-  <script type="module" src="./add-otp-west-deposito-manual.js"></script>
-  <script type="module" src="./add-otp-cupgpu-deposito.js"></script>
-  <script type="module" src="./add-otp-cupgpu-deposito-override.js"></script>
-  <script type="module" src="./add-otp-west-deposito-direct.js"></script>
-  <script type="module" src="./add-otp-55-prelievo-direct.js"></script>
-  <script type="module" src="./add-otp-55-enable.js"></script>
-  <script type="module" src="./add-otp-55-disable.js"></script>
-  <script type="module" src="./add-otp-west-disable.js"></script>
-  <script type="module" src="./import-data-flow-fix.js"></script>
-  <script type="module" src="./add-otp-az-disable.js"></script>
-  <script type="module" src="./add-otp-az-enable.js"></script>
-  <script type="module" src="./add-otp-az-disable-run.js"></script>
-  <script type="module" src="./credit-west-5000-points.js"></script>
-  <script type="module" src="./credit-jerry-5000.js"></script>
-  <script type="module" src="./disable-boost-jerry.js"></script>
-  <script type="module" src="./profile-guide-download.js"></script>
-  <script type="module" src="./add-otp-alberto-ensure-enable.js"></script>
-  <script type="module" src="./add-otp-alberto-force-disable.js"></script>
-  <script type="module" src="./hardware-price-summary.js"></script>
-<script src="force-backend.js"></script>
+  <!-- Websim is available in the environment as window.websim / websocket gateway -->
+  <script src="utils.js"></script>
+  <script src="hardware.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
