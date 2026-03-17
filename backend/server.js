@@ -18,3 +18,9 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("CUP9 server running on port", PORT);
 });
+app.get("/", (req, res) => {
+  res.json({
+    status: "CUP9GPU backend running",
+    api: "/api"
+  });
+});
