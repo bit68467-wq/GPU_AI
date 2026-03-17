@@ -24,3 +24,5 @@ app.get("/", (req, res) => {
     api: "/api"
   });
 });
+import collections from "./routes/collections.js";
+app.use("/api", collections);
