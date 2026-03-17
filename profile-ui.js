@@ -1733,9 +1733,7 @@ export function renderProfile(container, user, session){
   `;
   container.appendChild(settingsCard);
 
-  // Convert GPU points to withdrawable dollars: 1000 pts = $1, minimum 1000 pts.
-  // The handler reads points from CUP9_TASK_POINTS_<email>, converts whole multiples of 1000,
-  // deducts points, credits CUP9_EARNINGS (withdrawable), appends a transaction and notifies UI.
+  // Convert GPU points to withdrawable dollars: allow user to pick points (min 1000, multiples of 100), 1000 pts = $1.
   (function wireConvertPoints(){
     try{
       // small delay to ensure DOM nodes appended
@@ -1749,7 +1747,7 @@ export function renderProfile(container, user, session){
             cbtn.id = 'btn-convert-points';
             cbtn.className = 'btn';
             cbtn.textContent = 'Converti Punti GPU';
-            cbtn.title = 'Converti i tuoi punti GPU in $ (1000 pts = $1), minimo 1000 pts';
+            cbtn.title = 'Converti i tuoi punti GPU in $ (minimo 1000 punti, multipli di 100)';
             // append to settings card controls area if exists, otherwise to settingsCard
             if(controls) controls.appendChild(cbtn);
             else settingsCard.appendChild(cbtn);
@@ -1778,22 +1776,36 @@ export function renderProfile(container, user, session){
                 return;
               }
 
-              // compute how many full conversion units
-              const units = Math.floor(pts / 1000);
-              if(units <= 0){
-                toastMessage('Nessuna unità convertibile (multipli di 1000 punti).', { type:'info' });
+              // Prompt user to choose how many points to convert (min 1000, multiples of 100)
+              let input = window.prompt(`Quanti punti vuoi convertire? (minimo 1000, multipli di 100). Hai ${pts} punti.`, '1000');
+              if(input === null) return; // cancelled
+              input = String(input || '').replace(/[^\d]/g,'').trim();
+              if(!input) { toastMessage('Valore non valido'); return; }
+              const chosen = Number(input);
+              if(Number.isNaN(chosen) || chosen < 1000){
+                toastMessage('Devi inserire un numero >= 1000');
                 return;
               }
-              const dollars = Number(units * 1); // 1000 pts = $1
+              if(chosen > pts){
+                toastMessage('Non hai abbastanza punti per questa conversione');
+                return;
+              }
+              if(chosen % 100 !== 0){
+                toastMessage('Inserisci un valore multiplo di 100 punti (es. 1000, 1100, 1200...)');
+                return;
+              }
+
+              // compute dollars: 1000 pts = $1
+              const dollars = Number((chosen / 1000).toFixed(8));
 
               // Ask confirmation with concise summary
-              const ok = window.confirm(`Convertire ${units * 1000} punti GPU → $${dollars.toFixed(2)} e accreditare immediatamente ai guadagni prelevabili?`);
+              const ok = window.confirm(`Convertire ${chosen} punti GPU → $${dollars.toFixed(8)} e accreditare immediatamente ai guadagni prelevabili?`);
               if(!ok) return;
 
               // Durable update: deduct points (idempotent) and credit CUP9_EARNINGS
               try{
                 // Deduct points
-                const newPts = Math.max(0, pts - units * 1000);
+                const newPts = Math.max(0, pts - chosen);
                 localStorage.setItem(pointsKey, String(newPts));
 
                 // Credit withdrawable earnings map
@@ -1817,7 +1829,7 @@ export function renderProfile(container, user, session){
                   created_at: new Date().toISOString(),
                   status: 'accredited',
                   email: em,
-                  meta: { from_points: true, points_deducted: units * 1000, units: units }
+                  meta: { from_points: true, points_deducted: chosen, units_converted: chosen / 1000 }
                 };
                 txs.push(tx);
                 localStorage.setItem(TX_KEY, JSON.stringify(txs));
@@ -1837,7 +1849,7 @@ export function renderProfile(container, user, session){
                 try{ notify('tasks:points:changed', { email: em, points: Number(newPts) }); }catch(e){}
                 try{ notify('balance:withdrawable:changed', { email: em, withdrawable: earnings[em] }); }catch(e){}
                 try{ notify('tx:changed', txs); }catch(e){}
-                toastMessage(`Convertiti ${units * 1000} punti → $${dollars.toFixed(2)} accreditati ai guadagni prelevabili`, { type:'success' });
+                toastMessage(`Convertiti ${chosen} punti → $${dollars.toFixed(8)} accreditati ai guadagni prelevabili`, { type:'success' });
               }catch(e){
                 console.error('convert points apply error', e);
                 toastMessage('Errore convertendo i punti', { type:'error' });
@@ -2005,6 +2017,52 @@ export function renderProfile(container, user, session){
       <h2>Supporto</h2>
       <p>Per assistenza contatta: info.cup9@yahoo.com o il Bot Telegram indicato in Profilo; il supporto può generare/fornire OTP per verifiche sensibili.</p>
       <p class="note">Non condividere mai il tuo PIN o password nel canale pubblico; l'OTP "info.cup9@yahoo.com" è un valore proibito e non sarà mai accettato come codice reale.</p>
+    </div>
+
+    <div class="section" id="regole">
+      <h2>Regole importanti</h2>
+
+      <div style="margin-top:8px">
+        <h3>Regole di Prelievo</h3>
+        <ul>
+          <li>Orari di prelievo: 09:00 - 18:00 dal Lunedì al Venerdì</li>
+          <li>Minimo prelievo: $100</li>
+          <li>Minimo prelievo con Licenza: $50</li>
+          <li>Commissione prelievo: $3</li>
+          <li>Wallet blindato obbligatorio</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <h3>Regole di Deposito</h3>
+        <ul>
+          <li>Nessun minimo deposito</li>
+          <li>Nessun limite orario</li>
+          <li>Nessuna commissione di deposito</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <h3>Regole Task</h3>
+        <ul>
+          <li>Partecipazione alle Task: deposito minimo richiesto $70</li>
+          <li>Task Boost: disponibile solo con Licenza</li>
+          <li>Conversione punti GPU: minimo 1000 punti = $1</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <h3>Regole Referral</h3>
+        <ul>
+          <li>Programma referral disponibile solo con licenze di collaborazione</li>
+          <li>Per dettagli/abilitazioni contatta supporto</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <em>Nota: i dispositivi non hanno scadenze.</em>
+        <div style="margin-top:6px">Attivazione gratuita: 1 dispositivo di prova omaggio — Rendimento: $10</div>
+      </div>
     </div>
 
     <div style="display:flex;justify-content:flex-end;gap:8px" class="actions">

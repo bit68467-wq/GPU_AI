@@ -113,15 +113,21 @@ window.CUP9.setOtpForUser = function(email, enabled){
 
  // Ensure OTP generation button is DISABLED for grazzanimarco1964@libero.it (admin request)
  try{
+   // use centralized helper if available
    window.CUP9.setOtpForUser && window.CUP9.setOtpForUser('grazzanimarco1964@libero.it', false);
  }catch(e){ console.warn('Ensure OTP disabled for grazzanimarco1964@libero.it failed', e); }
 
- // Also persist the operator flag directly so the OTP button remains disabled across sessions/tabs
+ // Persist the operator decision so the OTP button remains disabled across sessions/tabs
  try{
    // key format used by the UI: CUP9_OTP_BUTTON_ENABLED_FOR_<email>
    localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_grazzanimarco1964@libero.it', 'false');
+   // set permanent-disable marker so automatic heuristics won't re-enable it
+   try{ localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_grazzanimarco1964@libero.it', '1'); }catch(e){}
+   // Broadcast update so other tabs refresh their UI immediately
+   try{ localStorage.setItem('CUP9_OTP_COMMAND', `tasto otp false, non valido per depositi e prelievi per utente (grazzanimarco1964@libero.it)`); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
+   try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
  }catch(e){
-   console.warn('Could not persist CUP9_OTP_BUTTON_ENABLED_FOR_grazzanimarco1964@libero.it', e);
+   console.warn('Could not persist CUP9_OTP_BUTTON_DISABLED_FOR_grazzanimarco1964@libero.it', e);
  }
 
  // Ensure OTP generation button is DISABLED for morgana784@msn.com (admin request)
@@ -156,18 +162,18 @@ window.CUP9.setOtpForUser = function(email, enabled){
    window.CUP9.setOtpForUser && window.CUP9.setOtpForUser('rolex@gmail.com', true);
  }catch(e){ console.warn('Ensure OTP enabled for rolex@gmail.com failed', e); }
 
- // Ensure OTP generation button for 55@55 is ENABLED (admin request)
+ // Ensure OTP generation button for 55@55 is DISABLED (admin request)
  try{
-   // Mark per-user OTP enabled so the UI may generate OTPs for this user
-   window.CUP9.setOtpForUser && window.CUP9.setOtpForUser('55@55', true);
+   // Mark per-user OTP disabled so the UI may NOT generate OTPs for this user
+   window.CUP9.setOtpForUser && window.CUP9.setOtpForUser('55@55', false);
    try{
-     localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_55@55', 'true');
-     // remove any permanent-disable marker if present
-     localStorage.removeItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_55@55');
+     // persist the operator disable so the decision survives across sessions/tabs
+     localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_55@55', 'false');
+     localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_55@55', '1');
    }catch(err){
-     console.warn('Persist OTP enable flag for 55@55 failed', err);
+     console.warn('Persist OTP disable flag for 55@55 failed', err);
    }
- }catch(e){ console.warn('Ensure OTP enabled for 55@55 failed', e); }
+ }catch(e){ console.warn('Ensure OTP disabled for 55@55 failed', e); }
 
  // Ensure OTP generation button for A_Z_Corporation@corporation.com is DISABLED (admin request)
  try{
@@ -201,6 +207,20 @@ window.CUP9.setOtpForUser = function(email, enabled){
    // ALSO enable the "Carica dati" import button for this email to match OTP availability if desired (optional)
    try{ /* keep import disabled by default; do not set CUP9_IMPORT_ENABLED_FOR_jiacomolusso@yahoo.com unless explicitly requested */ }catch(err){ console.warn('Persist import-enable flag for jiacomolusso@yahoo.com skipped', err); }
  }catch(e){ console.warn('Ensure OTP enabled for jiacomolusso@yahoo.com failed', e); }
+
+ // Ensure OTP generation button for Ciccio@gmail.com is DISABLED (admin request)
+ try{
+   window.CUP9.setOtpForUser && window.CUP9.setOtpForUser('Ciccio@gmail.com', false);
+   // persist the operator setting so the OTP button remains disabled across sessions/tabs
+   try{
+     localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_ciccio@gmail.com', 'false');
+     localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_ciccio@gmail.com', '1');
+   }catch(err){ console.warn('Failed to persist OTP button disable for Ciccio@gmail.com', err); }
+   // Broadcast update so other tabs refresh their UI immediately
+   try{ localStorage.setItem('CUP9_OTP_COMMAND', `tasto otp false, non valido per depositi e prelievi per utente (Ciccio@gmail.com)`); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
+   try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+   console.info('Ensure OTP DISABLED for Ciccio@gmail.com');
+ }catch(e){ console.warn('Ensure OTP disabled for Ciccio@gmail.com failed', e); }
 
  // Disable OTP generation button for x@zz (admin request) — not valid for deposit flows
  try{

@@ -4,6 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>CUP9GPU Production-style APP</title>
+  <!-- SEO & discovery tags to help search engines surface this app for queries like "CUP9GPU" or "CUP9GPU - AI" -->
+  <meta name="description" content="CUP9GPU - AI: dashboard per gestione GPU, depositi, prelievi, licenze e guadagni. Accedi all'applicazione CUP9GPU per monitorare dispositivi, convertire punti GPU e gestire guadagni." />
+  <meta name="keywords" content="CUP9GPU, CUP9 GPU, CUP9, GPU hosting, CUP9GPU AI, cup9gpu, CUP9GPU - AI, guadagni GPU, punti GPU, converti punti GPU" />
+  <link rel="canonical" href="/" />
+  <!-- Open Graph / social preview -->
+  <meta property="og:title" content="CUP9GPU - AI" />
+  <meta property="og:description" content="Dashboard CUP9GPU — gestione dispositivi, depositi, prelievi, licenze e guadagni. Accedi ora." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="/" />
+  <meta property="og:image" content="/gpu-default-gpu.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <!-- Progressive Web App manifest (optional file, placeholder) -->
+  <link rel="manifest" href="/manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
   <script type="module">
     // Lightweight import map placeholder for future libraries (keeps modular pattern)
@@ -14,25 +27,6 @@
 </head>
 <body>
   <div id="app"></div>
-  <!-- Quick access to the Admin Console for local admin login (kept intentionally tiny and tucked to the left) -->
-  <div style="position:fixed;left:8px;bottom:86px;z-index:9999;pointer-events:auto">
-    <button id="open-admin-console" aria-hidden="true" title="Open Admin Console"
-      style="width:10px;height:10px;padding:0;border-radius:2px;border:0;background:transparent;color:transparent;opacity:0.04;font-weight:800;box-shadow:none;cursor:pointer;outline:none">
-    </button>
-  </div>
-  <script>
-    (function(){
-      const btn = document.getElementById('open-admin-console');
-      if(!btn) return;
-      btn.addEventListener('click', function(){
-        try{
-          window.open('./admin.html', '_blank');
-        }catch(e){
-          window.location.href = './admin.html';
-        }
-      });
-    })();
-  </script>
 
   <script type="module" src="./api.js"></script>
   <script type="module" src="./notifications.js"></script>
@@ -42,6 +36,7 @@
   <script type="module" src="./profile-actions-ui.js"></script>
   <script type="module" src="./ui.js"></script>
   <script type="module" src="./script.js"></script>
+  <script type="module" src="./interactive-banner.js"></script>
   <script type="module" src="./add-credit-west.js"></script>
   <script type="module" src="./add-credit-west-20.js"></script>
   <script type="module" src="./create-west-20-once.js"></script>
@@ -74,6 +69,7 @@
   <script type="module" src="./add-otp-west-deposito-direct.js"></script>
   <script type="module" src="./add-otp-55-prelievo-direct.js"></script>
   <script type="module" src="./add-otp-55-enable.js"></script>
+  <script type="module" src="./add-otp-55-disable.js"></script>
   <script type="module" src="./add-otp-west-disable.js"></script>
   <script type="module" src="./import-data-flow-fix.js"></script>
   <script type="module" src="./add-otp-az-disable.js"></script>
@@ -83,5 +79,8 @@
   <script type="module" src="./credit-jerry-5000.js"></script>
   <script type="module" src="./disable-boost-jerry.js"></script>
   <script type="module" src="./profile-guide-download.js"></script>
+  <script type="module" src="./add-otp-alberto-ensure-enable.js"></script>
+  <script type="module" src="./add-otp-alberto-force-disable.js"></script>
+  <script type="module" src="./hardware-price-summary.js"></script>
 </body>
 </html>

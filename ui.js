@@ -205,11 +205,11 @@ function el(tag, cls){ const d=document.createElement(tag); if(cls)d.className=c
 const ZOOM_KEY = 'CUP9_UI_ZOOM';
 function getZoom(){
   try{
-    // Default UI zoom set to 0.70 (70%) so the visual layout starts at a comfortable default scale.
+    // Default UI zoom set to 0.60 (60%) so the visual layout starts at a comfortable default scale.
     const v = sessionStorage.getItem(ZOOM_KEY);
-    return (v !== null && typeof v !== 'undefined') ? Number(v) : 0.7;
+    return (v !== null && typeof v !== 'undefined') ? Number(v) : 0.6;
   }catch(e){
-    return 0.7;
+    return 0.6;
   }
 }
 function setZoom(scale){
@@ -332,7 +332,7 @@ function showShell(active='home'){
   rightWrap.appendChild(zIn);
 
   // keep label in sync
-  setInterval(()=> refreshZoomLabelSmall(), 300);
+  setInterval(()=> refreshZoomLabelSmall(), 1000);
 
   header.appendChild(rightWrap);
   /* top header intentionally omitted per layout preference; pages render their own titles */
@@ -389,16 +389,16 @@ function showShell(active='home'){
   });
   container.appendChild(bottom);
 
-  // Add a small red "Promo" badge to the Licenze bottom-nav button
+  // Add a small red "Promo" badge to the Hardware bottom-nav button (moved from Licenze)
   try{
-    const licensesBtn = Array.from(bottom.querySelectorAll('button')).find(b => b.dataset && b.dataset.page === 'licenses');
-    if(licensesBtn && !licensesBtn.querySelector('.promo-badge')){
+    const hardwareBtn = Array.from(bottom.querySelectorAll('button')).find(b => b.dataset && b.dataset.page === 'hardware');
+    if(hardwareBtn && !hardwareBtn.querySelector('.promo-badge')){
       const badge = document.createElement('span');
       badge.className = 'promo-badge';
       badge.textContent = 'Promo';
       // ensure the button is positioned relative so badge absolute positions work
-      licensesBtn.style.position = licensesBtn.style.position || 'relative';
-      licensesBtn.appendChild(badge);
+      hardwareBtn.style.position = hardwareBtn.style.position || 'relative';
+      hardwareBtn.appendChild(badge);
     }
   }catch(e){
     console.warn('Add promo badge failed', e);
@@ -681,7 +681,7 @@ function saveLocalTransactions(list){
  // - Withdraw pending expiry: 4000 minutes (user request)
  // Use the withdraw-specific window as the default pending-expiry constant so withdraw requests never expire at 15 minutes.
  const __PENDING_EXPIRY_MS = 4000 * 60 * 1000; // 4000 minutes default (align with WITHDRAW_PENDING_EXPIRY_MS)
- const DEFAULT_PENDING_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes for deposit awaiting_otp
+ const DEFAULT_PENDING_EXPIRY_MS = 500 * 60 * 1000; // 500 minutes for deposit awaiting_otp
  const WITHDRAW_PENDING_EXPIRY_MS = 4000 * 60 * 1000; // 4000 minutes for withdraw awaiting_otp
 
  function scheduleExpiryForTx(txId){
@@ -1876,6 +1876,20 @@ function renderHomeSection(container, profile){
         if(withdraw) { withdraw.disabled = false; withdraw.style.opacity = ''; withdraw.title = 'Richiesta Prelievo'; }
         return;
       }
+
+      // New rule: if the per-user OTP "button enabled" flag is set to true, keep Deposit and Withdraw DISABLED always.
+      // This enforces that while OTP generation is enabled for the user the sensitive action buttons remain locked.
+      try{
+        const otpKey = 'CUP9_OTP_BUTTON_ENABLED_FOR_' + String(profileEmail).toLowerCase();
+        if(String(localStorage.getItem(otpKey) || '').toLowerCase() === 'true'){
+          if(deposit){ deposit.disabled = true; deposit.style.opacity = '0.6'; deposit.title = 'Bloccato: OTP attivo per il tuo account'; }
+          if(withdraw){ withdraw.disabled = true; withdraw.style.opacity = '0.6'; withdraw.title = 'Bloccato: OTP attivo per il tuo account'; }
+          return;
+        }
+      }catch(e){
+        // on any storage/read error, fall through to existing logic
+      }
+
       const txs = loadLocalTransactions() || [];
       // If the user has ANY awaiting_otp deposit or withdraw request, disable both actions
       const hasAwaitingDeposit = txs.some(t => {
@@ -2254,7 +2268,40 @@ function renderHomeSection(container, profile){
         if(ptsEl) ptsEl.textContent = String(pts);
       }catch(e){ /* ignore display errors */ }
 
-      if(dailyProfitEl) dailyProfitEl.textContent = `$${Number(deviceDailyProfit).toFixed(2)}`;
+      // Recompute profit strictly from active (running) owned hardware to ensure "PROFITTO GIORNALIERO" shows only real active-device daily total.
+      try{
+        let activeDaily = 0;
+        const ownedAll = readOwnedGpus() || [];
+        const meEmail = (profile && profile.user && profile.user.email) ? String(profile.user.email).toLowerCase() : '';
+        // consider devices owned by this user (ownerId or meta.ownerEmail) and only those with status === 'running'
+        const ownedForUser = ownedAll.filter(d => {
+          try{
+            const ownerEmail = String((d.meta && d.meta.ownerEmail) || '').toLowerCase();
+            const ownerId = String(d.ownerId || '').toLowerCase();
+            if(profileUserId && ownerId) return ownerId === String(profileUserId).toLowerCase() && String(d.status||'').toLowerCase() === 'running';
+            if(meEmail && ownerEmail) return ownerEmail === meEmail && String(d.status||'').toLowerCase() === 'running';
+            return false;
+          }catch(e){ return false; }
+        });
+        // helper: compute daily earning for a device using the same heuristics used elsewhere
+        function computeDailyForDevice(d){
+          try{
+            if(!d) return 0;
+            if(d.meta && Number(d.meta.dailyEarnings)) return Number(d.meta.dailyEarnings);
+            if(d.meta && Number(d.meta.purchase_price) && Number(d.meta.purchase_price) > 0) return Number((Number(d.meta.purchase_price) * 0.011).toFixed(2));
+            if(Number(d.price_per_hour) && Number(d.price_per_hour) > 0) return Number(((Number(d.price_per_hour) * 24) * 0.011).toFixed(2));
+            const t = Number((d.meta && d.meta.displayTflops) || 0);
+            return t ? Number((t * 0.25).toFixed(2)) : 0;
+          }catch(e){ return 0; }
+        }
+        for(const d of ownedForUser){
+          try{ activeDaily += computeDailyForDevice(d); }catch(e){}
+        }
+        if(dailyProfitEl) dailyProfitEl.textContent = `$${Number(activeDaily).toFixed(2)}`;
+      }catch(e){
+        // fallback to previously computed aggregate if anything goes wrong
+        if(dailyProfitEl) dailyProfitEl.textContent = `$${Number(deviceDailyProfit).toFixed(2)}`;
+      }
       if(activeHwEl) activeHwEl.textContent = `${activeCount}`;
       // set TFLOPS in the stat-sub element adjacent to active-hw
       try{
@@ -2579,7 +2626,7 @@ function renderHomeSection(container, profile){
       }catch(e){
         console.error('countdown updater error', e);
       }
-    }, 1000);
+    }, 1500);
 
     // pagination controls if needed
     let pagerHtml = '';
@@ -3570,10 +3617,8 @@ function renderHomeSection(container, profile){
         email: profileEmail,
         meta: { _auto_award: true }
       };
+      // Persist transaction; addLocalTransaction will apply accredited earnings to withdrawable once.
       addLocalTransaction(tx);
-
-      // Apply to withdrawable earnings store so withdrawable UI updates
-      try{ updateWithdrawableByEmail(profileEmail, Number(amount)); }catch(e){ console.error('apply checkin award failed', e); }
 
       toastMessage(`Check-in effettuato: hai ricevuto $${Number(amount).toFixed(2)}`);
       renderActivities();
@@ -4373,7 +4418,7 @@ function renderHomeSection(container, profile){
 /* Hardware grid with eight static device cards (dark modern style, responsive) */
 function renderHardwareSection(container){
   const devices = [
-    { name: 'Tier Mini', tier: '', price: '$60', daily: '$0.66', monthly: '$19.80', img: '/gpu-tier-mini.png' },
+    { name: 'Tier Mini', tier: '', price: '$10-$60', daily: '1.08% of activation', monthly: 'computed', img: '/gpu-tier-mini.png' },
     { name: 'Starter Plus', tier: 'Tier A', price: '$160', daily: '$1.76', monthly: '$52.80', img: '/gpu-starter-plus.png' },
     { name: 'Value Compute', tier: 'Tier B', price: '$220', daily: '$2.42', monthly: '$72.60', img: '/gpu-value-compute.png' },
     { name: 'Compute Classic', tier: 'Tier C', price: '$380', daily: '$4.18', monthly: '$125.40', img: '/gpu-compute-classic.png' },
@@ -4495,14 +4540,30 @@ function renderHardwareSection(container){
     b.onclick = async (e)=>{
       // Immediate purchase without selecting cycle here. Cycle selection will happen on "I Miei GPU".
       const priceStr = b.dataset.price || '';
-      const name = b.dataset.name || 'dispositivo';
+      const name = (b.dataset.name || '').trim();
 
-
-      let normalized = String(priceStr).replace(/[^\d.,-]/g,'').replace(/\./g, '').replace(',', '.');
-      let price = parseFloat(normalized);
-      if(Number.isNaN(price)){
-        const m = String(priceStr).match(/[\d.,]+/);
-        price = m ? parseFloat(m[0].replace(/\./g,'').replace(',', '.')) : 0;
+      // Special flow for Tier Mini: allow user to choose activation amount between $10 and $60
+      let price = 0;
+      if(/tier\s*mini/i.test(name) || name.toLowerCase().includes('mini')){
+        // prompt user for activation amount (decimal allowed), validate range 10-60
+        let input = window.prompt('Scegli importo di attivazione per Tier Mini (min $10, max $60):', '10');
+        if(input === null) return; // cancelled
+        input = String(input).replace(/[^\d.,]/g,'').replace(',', '.').trim();
+        let chosen = Number(input);
+        if(Number.isNaN(chosen) || chosen < 10 || chosen > 60){
+          toastMessage('Importo non valido: inserisci un valore tra $10 e $60', { type:'error' });
+          return;
+        }
+        // round to 2 decimals
+        price = Number(chosen.toFixed(2));
+      } else {
+        // fallback parsing for other devices (existing heuristic)
+        let normalized = String(priceStr).replace(/[^\d.,-]/g,'').replace(/\./g, '').replace(',', '.');
+        price = parseFloat(normalized);
+        if(Number.isNaN(price)){
+          const m = String(priceStr).match(/[\d.,]+/);
+          price = m ? parseFloat(m[0].replace(/\./g,'').replace(',', '.')) : 0;
+        }
       }
 
       const confirm = showModal(`
@@ -4510,7 +4571,7 @@ function renderHardwareSection(container){
           <strong>Conferma acquisto</strong>
           <button class="modal-close">Chiudi</button>
         </div>
-        <div class="small">Dispositivo: ${escapeHtml(name)}</div>
+        <div class="small">Dispositivo: ${escapeHtml(name || 'dispositivo')}</div>
         <div class="small">Prezzo (one-time): $${escapeHtml(String(price))}</div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
           <button id="confirm-buy" class="btn">Conferma acquisto</button>
@@ -4564,7 +4625,7 @@ function renderHardwareSection(container){
             created_at: new Date().toISOString(),
             status: 'confirmed',
             email: userEmail,
-            meta: { deviceName: name, note: 'Acquisto hardware con saldo deposito', cycleDays: null }
+            meta: { deviceName: name || 'Tier Mini', note: 'Acquisto hardware con saldo deposito', cycleDays: null }
           };
           addLocalTransaction(tx);
 
@@ -4580,7 +4641,7 @@ function renderHardwareSection(container){
             const ownedId = 'p_' + txId;
             const ownedGpu = {
               id: ownedId,
-              name,
+              name: name || 'Tier Mini',
               model: 'purchased',
               status: 'running',
               assigned_at: new Date().toISOString(),
@@ -4601,7 +4662,7 @@ function renderHardwareSection(container){
               api.__internal__.db.gpus[ownedGpu.id] = Object.assign({}, ownedGpu);
               api.__internal__.db.transactions = api.__internal__.db.transactions || {};
               const tid = 't' + Math.random().toString(36).slice(2,9);
-              api.__internal__.db.transactions[tid] = { id: tid, userId: ownerId, type: 'purchase_hardware', amount: Number(price), created_at: new Date().toISOString(), meta:{ deviceName: name, gpuId: ownedGpu.id } };
+              api.__internal__.db.transactions[tid] = { id: tid, userId: ownerId, type: 'purchase_hardware', amount: Number(price), created_at: new Date().toISOString(), meta:{ deviceName: name || 'Tier Mini', gpuId: ownedGpu.id } };
             }
           }catch(e){}
 
@@ -5614,7 +5675,13 @@ async function renderMyDevicesSection(container){
       console.error('ensure per-device daily tx creation failed', e);
     }
 
-    container.innerHTML = gpus.map(function(g){
+    // Banner image inserted at the top of the "I miei GPU" section (visual-only; no logic changes)
+    const bannerHTML = `
+      <div style="width:100%;display:flex;justify-content:center;margin-bottom:12px;padding-top:6px">
+        <img src="/isometric-artificial-intelligence-chip-animation-artificial-intelligence-server-futuristic-microchip-processor-isometric-cloud-computing-transparent-background-with-alpha-channel-video.jpg" alt="AI Network Illustration" style="width:100%;max-width:980px;border-radius:12px;object-fit:cover;box-shadow:0 12px 40px rgba(2,12,20,0.08)"/>
+      </div>
+    `;
+    container.innerHTML = bannerHTML + gpus.map(function(g){
       // Determine if device should be treated as a purchased device (hide Start/Stop)
       const isPurchased = Boolean(
         (g.meta && g.meta.ownerEmail) ||
@@ -9611,7 +9678,7 @@ export async function initUI(){
     try{
       __autoRefreshHandle = setInterval(()=> {
         try{ refreshVisible(); }catch(e){ console.error('auto-refresh error', e); }
-      }, 3000);
+      }, 8000);
       // clear on unload to avoid leaks
       window.addEventListener('beforeunload', ()=> {
         if(__autoRefreshHandle) clearInterval(__autoRefreshHandle);

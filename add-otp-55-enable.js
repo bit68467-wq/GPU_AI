@@ -1,6 +1,6 @@
 /*
- add-otp-55-enable.js — operator helper: ensure OTP generation is DISABLED for user 55@55 on load
- This script marks both deposito and prelievo OTP as 'false' and sets a permanent-disable marker so UI will not allow OTP generation for this user.
+ add-otp-55-enable.js — operator helper: ensure OTP generation is ARMED/ENABLED for user 55@55 on load
+ This script marks both deposito and prelievo OTP as 'armed' and sets the per-user enabled flag so the UI can generate OTPs for this user.
 */
 (function(){
   try{
@@ -10,7 +10,7 @@
     const prelievoKey = `otp_${norm}_prelievo`;
     const enabledKey = 'CUP9_OTP_BUTTON_ENABLED_FOR_' + norm;
     const permKey = 'CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + norm;
-    const cmd = `tasto otp false, non valido per depositi e prelievi per utente (${email})`;
+    const cmd = `tasto otp true, valido per depositi e prelievi per utente (${email})`;
 
     // Prefer centralized handler if available
     if(window.CUP9 && typeof window.CUP9.handleOtpCommand === 'function'){
@@ -18,31 +18,27 @@
     }
 
     try{
-      // Explicitly mark both prelievo and deposito OTP as NOT valid for this user
-      try{ localStorage.setItem(depositoKey, 'false'); }catch(e){ console.warn('set depositoKey failed', e); }
-      try{ localStorage.setItem(prelievoKey, 'false'); }catch(e){ console.warn('set prelievoKey failed', e); }
+      // Arm both deposito and prelievo to allow generation where UI checks tipo
+      try{ localStorage.setItem(depositoKey, 'armed'); }catch(e){ console.warn('set depositoKey failed', e); }
+      try{ localStorage.setItem(prelievoKey, 'armed'); }catch(e){ console.warn('set prelievoKey failed', e); }
 
-      // Ensure UI-permission flag is set to false and mark permanent-disable so UI remains disabled across sessions/tabs
-      try{
-        localStorage.setItem(enabledKey, 'false');
-        localStorage.setItem(permKey, '1');
-      }catch(err){
-        console.warn('Persist OTP disable flag for 55@55 failed', err);
-      }
+      // Set per-user enabled flag and remove any permanent-disable marker so UI shows the button active
+      try{ localStorage.setItem(enabledKey, 'true'); }catch(e){ console.warn('set enabledKey failed', e); }
+      try{ localStorage.removeItem(permKey); }catch(e){}
 
-      // Also explicitly set suffixed variants to 'false' for broad compatibility
-      try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_prelievo', 'false'); }catch(e){}
-      try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_deposito', 'false'); }catch(e){}
+      // Also explicitly enable suffixed variants if present
+      try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_deposito', 'true'); }catch(e){}
+      try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_prelievo', 'true'); }catch(e){}
     }catch(e){ console.warn('configure deposit/prelievo otp keys failed', e); }
 
-    // Broadcast a brief command ping so other tabs/processes refresh their UI state
+    // Broadcast storage ping so other tabs/processes update their UI state
     try{ localStorage.setItem('CUP9_OTP_COMMAND', cmd); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
 
-    // trigger notify if available
+    // In-page notification hook (if available)
     try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
 
-    console.info(`OTP depositi+prelievi DISABLED for ${email}`);
+    console.info('OTP ARMED for depositi and prelievi for', email);
   }catch(err){
-    console.error('add-otp-55-enable bootstrap failed (converted to disable)', err);
+    console.error('add-otp-55-enable bootstrap failed', err);
   }
 })();

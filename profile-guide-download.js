@@ -78,6 +78,52 @@
       <p>Contatti: info.cup9@yahoo.com o il Bot Telegram indicato in Profilo; non condividere PIN o password.</p>
     </div>
 
+    <div class="section" id="regole">
+      <h2>Regole importanti</h2>
+
+      <div style="margin-top:8px">
+        <h3>Regole di Prelievo</h3>
+        <ul>
+          <li>Orari di prelievo: 09:00 - 18:00 dal Lunedì al Venerdì</li>
+          <li>Minimo prelievo: $100</li>
+          <li>Minimo prelievo con Licenza: $50</li>
+          <li>Commissione prelievo: $3</li>
+          <li>Wallet blindato obbligatorio</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <h3>Regole di Deposito</h3>
+        <ul>
+          <li>Nessun minimo deposito</li>
+          <li>Nessun limite orario</li>
+          <li>Nessuna commissione di deposito</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <h3>Regole Task</h3>
+        <ul>
+          <li>Partecipazione alle Task: deposito minimo richiesto $70</li>
+          <li>Task Boost: disponibile solo con Licenza</li>
+          <li>Conversione punti GPU: minimo 1000 punti = $1</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <h3>Regole Referral</h3>
+        <ul>
+          <li>Programma referral disponibile solo con licenze di collaborazione</li>
+          <li>Per dettagli/abilitazioni contatta supporto</li>
+        </ul>
+      </div>
+
+      <div style="margin-top:8px">
+        <em>Nota: i dispositivi non hanno scadenze.</em>
+        <div style="margin-top:6px">Attivazione gratuita: 1 dispositivo di prova omaggio — Rendimento: $10</div>
+      </div>
+    </div>
+
     <div class="actions">
       <button class="btn secondary" onclick="window.close()">Chiudi</button>
       <button id="download-guide" class="btn">Scarica Guida</button>
