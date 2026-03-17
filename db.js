@@ -2,7 +2,7 @@ const path = require('path');
 const { Low, JSONFile } = require('lowdb');
 const { nanoid } = require('nanoid');
 
-const file = path.join(__dirname, 'db.json');
+const file = path.join(__dirname, '..', 'db.json');
 const adapter = new JSONFile(file);
 const db = new Low(adapter);
 
