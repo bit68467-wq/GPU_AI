@@ -1,0 +1,17 @@
+{
+  "name": "cup9gpu-production-style-app",
+  "version": "1.0.0",
+  "description": "GPU",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": "18.x"
+  },
+  "author": "",
+  "license": "ISC"
+}

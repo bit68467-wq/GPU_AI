@@ -1,0 +1,1653 @@
+:root{
+  /* Darker palette for an overall deeper, more luxurious look with stronger blue/black accents */
+  --bg: #071219;            /* near-black with subtle blue tint for deeper contrast */
+  --panel: linear-gradient(180deg,#05121a 0%, #0b2030 100%); /* darker panels leaning to deep navy/black */
+  --muted: #8aa9b4;         /* muted text slightly bluer */
+  --accent: #1f7fb3;        /* deeper blue accent */
+  --accent-2: #0f5f8a;      /* secondary deep-blue accent */
+  --gold: #b98f46;          /* slightly tempered gold highlight */
+  --glass: rgba(0,0,0,0.22);
+  --radius:16px;
+  --card-radius:20px;
+  font-family: "Inter", "Segoe UI", Roboto, -apple-system, system-ui, "Helvetica Neue", Arial;
+  color-scheme: dark;
+  color: #e6f6fa;          /* keep readable primary text */
+  letter-spacing: 0.08px;
+}
+/* Task titles styling: dark green headings for task/modal titles */
+.task-title {
+  color: #064b25 !important; /* verde scuro */
+  font-weight: 900 !important;
+}
+
+/* Additional class for other task headings (Task 2, Task 3, Boost) */
+.task-heading {
+  color: #064b25 !important; /* verde scuro */
+  font-weight: 900 !important;
+}
+/* Quiz question text (the <strong> following a task title) -> rosso scuro */
+.task-title ~ .small strong,
+.task-title + .small strong,
+.task-title ~ div .small strong {
+  color: #8b0000 !important; /* rosso scuro */
+  font-weight: 900 !important;
+}
+
+/* Global numeric typography improvements for clarity and luxury */
+.numeric, .hero-value, .withdraw-value, .stat-value, .act-amount, .activity-item .amount, .stat .small, .stat .stat-value {
+  font-variant-numeric: tabular-nums;
+  -moz-font-feature-settings: "tnum" 1;
+  -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+  letter-spacing: 0.4px;
+  font-weight: 900;
+  text-shadow: 0 6px 20px rgba(2,12,18,0.10);
+}
+
+/* Subtle gold treatment for monetary amounts to increase legibility and luxury */
+.numeric-amount, .hero-value, .withdraw-value, .stat-value.green, .activity-item .amount {
+  color: var(--gold);
+  background: linear-gradient(90deg, rgba(201,162,90,0.06), rgba(255,255,255,0.02));
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+/* Slightly larger and more distinct numeric scales */
+.hero-value{
+  font-size:2.6rem;
+  font-weight:900;
+  color: var(--gold);
+  text-shadow: 0 10px 30px rgba(1,10,14,0.18);
+}
+.withdraw-value{
+  font-size:1.25rem;
+  font-weight:900;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  padding:4px 8px;
+  border-radius:8px;
+}
+
+/* Dark card accents with faint gold border for a luxurious feel */
+.card {
+  border-radius:var(--card-radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,250,255,0.98));
+  box-shadow: 0 22px 60px rgba(2,8,12,0.16), 0 6px 16px rgba(19,120,184,0.04);
+  padding:10px;
+  color:var(--muted);
+  border: 1px solid rgba(201,162,90,0.06);
+}
+
+/* Emphasize stat values for easier scanning */
+.stat-value{
+  font-weight:900;
+  font-size:1.35rem;
+  color:#03181d;
+  text-shadow: 0 6px 18px rgba(2,12,18,0.06);
+}
+.stat-value.green{
+  color: #0a7a45;
+  background: linear-gradient(90deg, rgba(10,122,69,0.04), rgba(255,255,255,0.01));
+  padding:4px 8px;
+  border-radius:8px;
+}
+
+/* Activity item amount styling for prominence */
+.activity-item .amount{
+  font-weight:900;
+  font-size:1.05rem;
+  color: var(--gold);
+  padding:2px 6px;
+  border-radius:6px;
+  background: linear-gradient(90deg, rgba(201,162,90,0.06), rgba(255,255,255,0.02));
+}
+
+/* Slightly larger activity badges for readability */
+.activity-item .status{
+  font-size:0.86rem;
+  padding:7px 12px;
+  border-radius:12px;
+  background:linear-gradient(90deg, rgba(42,167,230,0.06), rgba(19,120,184,0.03));
+  color:var(--muted);
+  font-weight:800;
+}
+
+/* Ensure inputs and buttons keep good contrast */
+.input, .btn, .link {
+  border-radius:12px;
+  font-weight:800;
+}
+
+/* Make TFLOPS and small numeric details clearer */
+.stat-sub, .small {
+  color: rgba(3,24,28,0.72);
+  font-weight:700;
+}
+
+/* Keep original styles below intact (copied/preserved) */
+*{box-sizing:border-box}
+html,body,#app{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1200px 600px at 8% 12%, rgba(42,122,180,0.06), transparent 8%),
+    radial-gradient(900px 450px at 92% 86%, rgba(19,120,184,0.04), transparent 12%),
+    linear-gradient(180deg, #eaf8ff 0%, var(--bg) 100%);
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  font-size:16px;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  padding:12px;
+}
+/* Make full-bleed on small screens but centered on wide screens */
+.container{
+  width:100%;
+  max-width:100%; /* full-bleed on mobile for consistent sizing */
+  margin:0;
+  background:var(--panel);
+  border-radius:12px;
+  box-shadow:
+    0 12px 34px rgba(6,28,48,0.10),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  overflow:hidden;
+  display:grid;
+  grid-template-columns: 1fr;
+  min-height: calc(100vh - 24px); /* ensure the app fits the viewport height on mobile */
+  border: 1px solid rgba(19,120,184,0.06);
+  /* Smooth zoom transitions when scale changes */
+  transition: transform .14s ease, transform-origin .14s ease;
+  padding-bottom:56px; /* reserve space for bottom nav */
+}
+
+/* Desktop layout: sidebar + main content */
+@media(min-width:980px){
+  .container{
+    grid-template-columns: 1fr;
+    min-height:600px;
+  }
+}
+
+.header{
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  background:linear-gradient(90deg, rgba(19,120,184,0.08), rgba(42,167,230,0.04));
+  backdrop-filter: blur(6px);
+  border-bottom:1px solid rgba(19,120,184,0.06);
+}
+
+/* Home / Balance / Card styles (mobile-first, app-like) */
+.mobile-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 12px;
+  border-bottom:1px solid rgba(19,120,184,0.06);
+  background:linear-gradient(180deg, rgba(19,120,184,0.10), rgba(42,167,230,0.04));
+  position:relative;
+  z-index:2;
+}
+.mobile-brand{display:flex;align-items:center;gap:12px}
+.logo-small{
+  width:48px;height:48px;border-radius:12px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;
+  box-shadow: 0 14px 44px rgba(19,120,184,0.16);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Centered 3D logo for login and prominent screens */
+.logo-3d{
+  width:96px;
+  height:96px;
+  margin:14px auto;
+  border-radius:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+  color:#fff;
+  background: linear-gradient(135deg,var(--accent),var(--accent-2));
+  box-shadow: 0 28px 80px rgba(19,120,184,0.18), inset 0 -6px 18px rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  transform-style: preserve-3d;
+  perspective: 800px;
+  transform: rotateX(12deg) rotateY(-14deg) translateZ(0);
+  transition: transform .35s cubic-bezier(.2,.9,.2,1);
+  position:relative;
+  overflow:visible;
+}
+.logo-3d:hover{ transform: rotateX(0deg) rotateY(0deg) translateZ(6px) scale(1.03); }
+
+/* decorative sparkle layer for login */
+.login-sparkles {
+  position:absolute;
+  left:0; right:0; top:0; bottom:0;
+  pointer-events:none;
+  overflow:visible;
+}
+.login-sparkles i{
+  position:absolute;
+  width:6px;
+  height:6px;
+  background: radial-gradient(circle at 40% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.6) 40%, rgba(255,255,255,0) 70%);
+  border-radius:50%;
+  transform: translate3d(0,0,0);
+  opacity:0;
+  filter: drop-shadow(0 6px 12px rgba(30,160,220,0.12));
+  animation: sparkle-fade 2200ms linear infinite;
+}
+.login-sparkles i:nth-child(1){ left:6%; top:18%; animation-delay:0ms; }
+.login-sparkles i:nth-child(2){ left:36%; top:6%; animation-delay:280ms; }
+.login-sparkles i:nth-child(3){ left:68%; top:22%; animation-delay:560ms; }
+.login-sparkles i:nth-child(4){ left:82%; top:60%; animation-delay:840ms; }
+.login-sparkles i:nth-child(5){ left:14%; top:68%; animation-delay:1120ms; }
+.login-sparkles i:nth-child(6){ left:52%; top:52%; animation-delay:1400ms; }
+.login-sparkles i:nth-child(7){ left:44%; top:84%; animation-delay:1680ms; }
+
+@keyframes sparkle-fade {
+  0% { transform: translateY(0) scale(.6); opacity:0; }
+  10% { opacity:1; transform: translateY(-6px) scale(1.0); }
+  60% { opacity:0.8; transform: translateY(-12px) scale(0.9); }
+  100% { opacity:0; transform: translateY(-18px) scale(.6); }
+}
+
+/* small trust logos row used on login panel */
+.trust-logos {
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  align-items:center;
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid rgba(19,120,184,0.04);
+}
+.trust-logos img{
+  height:20px;
+  opacity:0.85;
+  transition: opacity .18s ease, transform .18s ease;
+  filter: drop-shadow(0 6px 16px rgba(2,12,20,0.06));
+}
+.trust-logos img:hover{ opacity:1; transform: translateY(-3px); }
+
+/* Minimal link-styled official site button used on login */
+.link-official {
+  display:block;
+  text-align:center;
+  margin:10px auto 0;
+  color:var(--muted);
+  background:transparent;
+  border:0;
+  text-decoration:underline;
+  cursor:pointer;
+  font-weight:800;
+  padding:6px 8px;
+  border-radius:8px;
+}
+.link-official:hover{ color:var(--accent); text-decoration:none; }
+.brand-text{display:flex;flex-direction:column}
+.brand-title{font-weight:900;color:#041f27;font-size:1.02rem}
+.brand-sub{font-size:0.78rem;color:var(--muted)}
+
+/* container that holds non-scrolling visible content per page */
+.home-scrollless{
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  background: transparent;
+}
+
+/* Main hero card */
+.card{
+  border-radius:var(--card-radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,250,255,0.98));
+  box-shadow: 0 18px 48px rgba(6,28,48,0.10), 0 4px 10px rgba(42,167,230,0.03);
+  padding:12px;
+  color:var(--muted);
+  border: 1px solid rgba(19,120,184,0.06);
+}
+.main-hero{
+  background: linear-gradient(135deg, rgba(19,120,184,0.96), rgba(42,167,230,0.92));
+  padding:16px;
+  color: #fff;
+  border-radius: calc(var(--card-radius) - 4px);
+  box-shadow: 0 26px 60px rgba(6,28,48,0.16), inset 0 -8px 40px rgba(0,0,0,0.08);
+  position:relative;
+  overflow:hidden;
+}
+.main-hero::after{
+  content:'';
+  position:absolute;
+  right:-22%;
+  top:-12%;
+  width:64%;
+  height:220%;
+  transform:rotate(24deg);
+  background: radial-gradient(closest-side, rgba(255,255,255,0.09), transparent 45%);
+  mix-blend-mode: overlay;
+  opacity:0.85;
+  pointer-events:none;
+}
+.hero-top{display:flex;flex-direction:column;gap:6px}
+.hero-label{font-size:0.95rem;color:rgba(255,255,255,0.96);font-weight:800;letter-spacing:0.6px}
+.hero-value{font-size:2.2rem;font-weight:900;color:#fff;text-shadow:0 8px 28px rgba(6,18,26,0.45)}
+.hero-bottom{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.withdraw-label{font-size:0.9rem;color:rgba(255,255,255,0.94);font-weight:800}
+.withdraw-value{font-size:1.1rem;font-weight:800;color:rgba(245,250,255,0.98)}
+
+/* Hero action pills */
+.hero-actions{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap}
+.pill{
+  flex:1;
+  min-width:100px;
+  padding:12px 16px;
+  border-radius:999px;
+  font-weight:900;
+  border:0;
+  cursor:pointer;
+  box-shadow: 0 14px 36px rgba(6,28,48,0.10);
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+/* clearer hover/focus states on pills */
+.pill:hover{ transform: translateY(-4px); box-shadow: 0 22px 46px rgba(6,28,48,0.14); }
+.pill:focus, .pill:focus-visible {
+  outline: none;
+  box-shadow: 0 8px 28px rgba(46,160,201,0.12), 0 0 0 4px rgba(46,160,201,0.08);
+}
+.pill:active{ transform: translateY(1px) scale(.998); }
+.pill.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#fff}
+.pill.danger{background:linear-gradient(90deg, rgba(200,80,80,0.12), rgba(255,107,107,0.06));color:var(--gold);border:1px solid rgba(255,255,255,0.04)}
+.pill.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.95)}
+
+/* Two small stat cards side-by-side (wrap on small screens) */
+.card-row{display:flex;gap:14px;flex-wrap:wrap}
+.stat-card{flex:1;padding:14px;display:flex;flex-direction:column;gap:10px;background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,250,255,0.98));border:1px solid rgba(19,120,184,0.06);border-radius:14px;box-shadow: 0 14px 36px rgba(6,28,48,0.06)}
+.stat-title{font-weight:800;color:var(--muted);font-size:0.86rem}
+.stat-value{font-weight:900;font-size:1.25rem;color:#03181d}
+.stat-value.green{color:#0a7a45}
+.stat-sub{font-size:0.84rem;color:var(--muted)}
+
+/* Section title */
+.section-title{font-weight:900;color:#03181d;margin-top:4px;margin-bottom:4px}
+
+/* Activity list: stacked cards */
+.activity-list{display:flex;flex-direction:column;gap:12px}
+.activity-card{
+  display:flex;justify-content:space-between;align-items:center;padding:14px;border-radius:12px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,250,255,0.98));
+  box-shadow: 0 12px 34px rgba(6,28,48,0.06);
+  border:1px solid rgba(19,120,184,0.04);
+}
+.act-left{display:flex;flex-direction:column;gap:4px}
+.act-type{font-weight:900;color:var(--accent)}
+.act-date{font-size:0.85rem;color:var(--muted)}
+.act-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.act-amount{font-weight:900;color:var(--accent)}
+.act-badge{font-weight:800;padding:6px 8px;border-radius:999px;background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));font-size:0.8rem;color:var(--muted)}
+
+/* icon button */
+.icon-btn{
+  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border:0;color:var(--muted);font-size:18px;padding:8px;border-radius:12px;cursor:pointer;
+  box-shadow: 0 8px 24px rgba(6,28,48,0.08);
+}
+
+/* Activity list */
+.activity{
+  margin-top:14px;border-radius:12px;padding:14px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(19,120,184,0.02));
+}
+.activity h3{margin:0 0 8px 0;font-size:1rem;color:#03181d}
+.activity-list{display:flex;flex-direction:column;gap:10px}
+.activity-item{display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,250,255,0.98))}
+.activity-item .left{display:flex;flex-direction:column;gap:4px}
+.activity-item .type{font-weight:800;color:var(--accent)}
+.activity-item .meta{font-size:0.85rem;color:var(--muted)}
+.activity-item .amount{font-weight:800;color:var(--accent)}
+.activity-item .status{font-size:0.8rem;padding:5px 10px;border-radius:999px;background:linear-gradient(90deg, rgba(42,167,230,0.06), rgba(19,120,184,0.03));color:var(--muted);font-weight:800}
+
+/* Header logout button */
+.header .hdr-right{display:flex;align-items:center;gap:12px}
+/* Zoom button visual style */
+.zoom-btn{
+  min-width:36px;
+  height:36px;
+  border-radius:10px;
+  border:0;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow: 0 8px 28px rgba(6,28,48,0.10);
+}
+.zoom-btn:active{ transform: translateY(1px); }
+
+/* Keep zoom buttons visible beside page headers so the per-page controls are accessible.
+   We only visually reduce header padding elsewhere via layout rules, but allow zoom buttons to show. */
+.header .zoom-btn,
+#page-title + div .zoom-btn,
+.page-section #page-title + div .zoom-btn,
+.mobile-header .zoom-btn {
+  display: inline-flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Ensure the small zoom label beside the page title is visible and aligned */
+#page-title + div .small,
+.page-section #page-title + div .small {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.header .logout-btn{padding:10px 12px;border-radius:12px;border:0;background:transparent;color:var(--muted);cursor:pointer}
+.header .logout-btn:hover{color:var(--accent);background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow: 0 10px 28px rgba(6,28,48,0.06)}
+
+/* Ensure mobile-first fit */
+@media(max-width:880px){
+  .card-tiles{flex-direction:column}
+  .balance-card .value{font-size:1.8rem}
+}
+.brand{display:flex;gap:14px;align-items:center}
+
+/* Page header titles (explicit bright gold) */
+#page-title, .title {
+  color: #FFD700 !important;
+}
+.logo{
+  width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;
+  box-shadow: 0 14px 40px rgba(19,120,184,0.16);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.title{font-weight:900;font-size:1.05rem;color:#FFD700}
+.header .meta{color:var(--muted);font-size:0.9rem}
+
+/* Main content area adapts: on desktop, left is sidebar column */
+.content{display:flex;flex:1;gap:10px;padding:8px}
+.panel{background:transparent;border-radius:14px;padding:18px;flex:1;min-width:220px}
+.left{width:100%;max-width:100%;display:flex;flex-direction:column;gap:16px}
+
+/* Desktop: left becomes fixed-width sidebar */
+@media(min-width:980px){
+  .left{width:320px;max-width:320px}
+}
+
+/* Compact form & controls */
+.form-row{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.input, .btn, .link{
+  border:1px solid rgba(4,43,54,0.08);
+  padding:14px 16px;
+  border-radius:12px;
+  background:transparent;
+  color:inherit;
+  min-height:44px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-weight:800;
+  cursor:pointer;
+  -webkit-tap-highlight-color: rgba(0,0,0,0.12);
+  touch-action: manipulation;
+}
+/* Ensure user-entered text in inputs is dark and highly readable against light input backgrounds */
+.input{
+  border:1px solid rgba(19,120,184,0.10);
+  outline:none;
+  background: linear-gradient(180deg, #fff, #f7fbff);
+  color: #042b36; /* explicit dark text for user input */
+  caret-color: var(--accent);
+}
+/* Placeholder text should be subtle but legible */
+.input::placeholder{
+  color: rgba(4,43,54,0.45);
+  opacity: 1;
+}
+.input:focus{border-color:var(--accent);box-shadow:0 12px 36px rgba(19,120,184,0.08)}
+.btn{
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+  border:0;
+  box-shadow: 0 18px 44px rgba(6,28,48,0.13);
+  min-height:48px;
+  padding:12px 18px;
+  border-radius:12px;
+  font-size:1rem;
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+  outline-offset:3px;
+}
+/* stronger visible focus state for accessibility */
+.btn:focus, .btn:focus-visible {
+  box-shadow: 0 6px 20px rgba(30,159,232,0.18), 0 0 0 4px rgba(46,160,201,0.12);
+  transform: translateY(-1px);
+  border:1px solid rgba(255,255,255,0.06);
+}
+.btn:active{ transform: translateY(0); }
+.btn.secondary{background:transparent;border:1px solid rgba(19,120,184,0.10);color:var(--muted)}
+.row{display:flex;gap:10px;align-items:center}
+.small{font-size:0.9rem;color:var(--muted)}
+.notice{padding:12px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(19,120,184,0.01));color:var(--muted)}
+.account-card{display:flex;gap:14px;align-items:center}
+.avatar{
+  width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#cfeefa,#bdeeff);
+  display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--accent);font-size:20px;
+  box-shadow: 0 10px 34px rgba(6,28,48,0.08);
+}
+.kv{display:flex;flex-direction:column;gap:6px}
+.kv .k{font-size:0.86rem;color:var(--muted)}
+.kv .v{font-weight:800;color:#03181d}
+.actions{display:flex;gap:10px;margin-top:12px}
+.dashboard{display:flex;flex-direction:column;gap:14px}
+.stat{display:flex;justify-content:space-between;align-items:center;padding:14px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(19,120,184,0.01));box-shadow: 0 12px 30px rgba(6,28,48,0.06)}
+
+/* Make text inside owned-device cards lighter and high-contrast for readability */
+.stat,
+.stat .left,
+.stat .left .type,
+.stat .left .meta,
+.stat .left .small,
+.stat .left .amount,
+.stat .small,
+.stat .meta {
+  color: #f1fbfd !important; /* very light tint for primary gpu data */
+}
+
+/* Slightly muted secondary lines but still light */
+.stat .small, .stat .meta {
+  color: rgba(241,251,253,0.88) !important;
+  font-weight:700;
+}
+
+/* Emphasize numeric amounts and earnings with gold */
+.stat .amount, .stat .left .amount {
+  color: var(--gold) !important;
+  font-weight:900;
+}
+
+/* Ensure labels/titles inside stat keep good weight and contrast */
+.stat .type {
+  color: #e6f6fa !important;
+  font-weight:900;
+}
+
+/* Keep buttons and controls within stat visually distinct */
+.stat button {
+  box-shadow: 0 8px 24px rgba(6,28,48,0.08);
+}
+
+/* "I miei GPU" styling: ensure device field descriptions are green and their corresponding values red.
+   Apply with high specificity so all purchased/owned-device data lines follow the rule.
+   Descriptions (labels, small/meta lines) -> green; Values (strong, numeric spans, amounts, time/date values) -> red. */
+#page-my-devices .stat,
+#page-my-devices .stat * {
+  /* reset any inherited color to allow selective overrides below */
+  color: inherit;
+}
+
+/* Descriptions / labels (field names like "Attivazione ciclo", "Data di acquisto", etc.) */
+/* Use high-contrast dark labels for readability rather than bright green */
+#page-my-devices .stat .left .small,
+#page-my-devices .stat .left .meta,
+#page-my-devices .stat .left .type,
+#page-my-devices .stat .small,
+#page-my-devices .stat .meta,
+#page-my-devices .stat .left label,
+#page-my-devices .stat .left .label {
+  color: #0b3b3f !important; /* dark teal for clear readable labels */
+  font-weight:800 !important;
+}
+
+/* Values (dates, times, numeric values, amounts, strong elements) — use a very dark color for legibility */
+#page-my-devices .stat .left strong,
+#page-my-devices .stat .left .amount,
+#page-my-devices .stat .left .v,
+#page-my-devices .stat .left .stat-value,
+#page-my-devices .stat .amount,
+#page-my-devices .stat .stat-value,
+#page-my-devices .stat .left em,
+#page-my-devices .stat .left span.value,
+#page-my-devices .stat .left .value,
+#page-my-devices .stat .left .data-value,
+#page-my-devices .stat .left .date,
+#page-my-devices .stat .left .time {
+  color: #03181d !important; /* dark near-black for maximum contrast */
+  font-weight:900 !important;
+}
+
+/* Also ensure inline <strong> inside small/meta are red when representing a value */
+#page-my-devices .stat .left .small strong,
+#page-my-devices .stat .left .meta strong {
+  color: #b21c1c !important;
+}
+
+/* Fallback: any element immediately following a descriptive label (common markup patterns)
+   should be treated as a value and shown red. This matches markup like "Attivazione ciclo: <strong>...</strong>" */
+#page-my-devices .stat .left .small + strong,
+#page-my-devices .stat .left .meta + strong,
+#page-my-devices .stat .left .small + span,
+#page-my-devices .stat .left .meta + span {
+  color: #b21c1c !important;
+  font-weight:900 !important;
+}
+.footer{padding:14px;border-top:1px solid rgba(19,120,184,0.06);display:flex;justify-content:space-between;align-items:center}
+.link{background:transparent;color:var(--accent);cursor:pointer}
+.badge{background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));color:var(--accent);padding:8px 12px;border-radius:999px;font-weight:800;box-shadow: 0 8px 28px rgba(6,28,48,0.06)}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
+@media(max-width:880px){
+  .container{min-height:680px}
+  .content{flex-direction:column}
+  .left{width:100%;max-width:none}
+}
+
+/* Bottom navigation (mobile-first) */
+/* On desktop we hide bottom nav and rely on header / sidebar */
+.bottom-nav{
+  display:flex;
+  gap:8px;
+  justify-content:space-around;
+  align-items:center;
+  padding:12px;
+  border-top:1px solid rgba(19,120,184,0.08);
+  background: linear-gradient(180deg, rgba(42,167,230,0.06), rgba(19,120,184,0.03));
+  box-shadow: 0 -8px 28px rgba(6,28,48,0.06);
+  backdrop-filter: blur(6px);
+  position:sticky;
+  bottom:0;
+  z-index:6;
+}
+.bottom-nav button{
+  flex:1;
+  min-height:48px;
+  border-radius:12px;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  font-weight:800;
+  cursor:pointer;
+  transition: all .18s ease;
+}
+
+/* small red promo badge appended to specific nav buttons (e.g., Licenze) */
+.bottom-nav button .promo-badge{
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  background: #ff3b3b;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 4px 6px;
+  border-radius: 999px;
+  font-weight: 900;
+  box-shadow: 0 6px 18px rgba(195,50,50,0.12);
+  line-height: 1;
+  pointer-events: none;
+}
+.bottom-nav button:hover{ transform: translateY(-3px); box-shadow: 0 12px 30px rgba(6,28,48,0.06) }
+.bottom-nav button.active{
+  color:#03181d;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  box-shadow: 0 18px 48px rgba(19,120,184,0.16);
+}
+
+/* Keep bottom nav visible on wide screens so menu shows on PC as well */
+@media(min-width:980px){
+  .bottom-nav{ display:flex; }
+}
+
+/* Make hardware grid cards adapt spacing on desktop */
+#hardware-grid{ gap:16px; }
+/* Slightly smaller hardware card visuals to avoid text overflow in device tiles */
+#hardware-grid .card{
+  padding:10px;
+  min-height:unset;
+  line-height:1.05;
+  font-size:0.95rem;
+}
+/* Ensure hardware card images are visible and consistently fitted */
+#hardware-grid .card img{
+  display:block !important;
+  visibility:visible !important;
+  max-width:78px;
+  max-height:78px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius:8px;
+}
+
+/* Also ensure images inside owned-device cards (.stat) are visible and cover the slot */
+.stat img{
+  display:block !important;
+  visibility:visible !important;
+  width:72px;
+  height:72px;
+  object-fit:cover;
+  border-radius:8px;
+}
+
+#hardware-grid .card .small{ font-size:0.82rem; }
+#hardware-grid .card div[style*="font-weight:900"]{ font-size:0.95rem; }
+#hardware-grid .card .btn{ padding:8px 10px; font-size:0.92rem; min-height:38px; }
+@media(max-width:480px){
+  #hardware-grid .card{ padding:10px; font-size:0.92rem; }
+  #hardware-grid .card img{ max-width:64px; max-height:64px; width:auto; height:auto; }
+  .stat img{ width:64px; height:64px; }
+}
+@media(min-width:1100px){
+  #hardware-grid{ grid-template-columns: repeat(3,1fr); }
+}
+
+/* Slightly larger typography on desktop for comfort */
+@media(min-width:980px){
+  body{ font-size:16.5px; }
+  .hero-value{ font-size:2.6rem; }
+  .hero-label, .withdraw-label{ font-size:1rem; }
+}
+
+/* Minor mobile scale reduction to avoid excessive zoom on small viewports */
+@media(max-width:480px){
+  /* Remove small-screen downscaling and increase padding/spacing to keep UI legible */
+  .container{
+    transform: none;
+    transform-origin: top center;
+    width: calc(100% - 12px);
+    margin: 0 auto;
+    min-height:560px;
+  }
+  body{
+    padding:14px;
+  }
+  .pill{
+    padding:12px 14px;
+    font-size:16px;
+  }
+  /* Slightly larger inputs and buttons for better tap targets on very small screens */
+  .input{ padding:16px 14px; font-size:1rem; min-height:48px; }
+  .btn{ min-height:52px; padding:14px 18px; }
+}
+
+/* Elegant luxury toast styles */
+.toast {
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  z-index: 9999;
+  display: flex;
+  gap:12px;
+  align-items: center;
+  min-width: 260px;
+  max-width: 420px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(250,249,246,0.92));
+  color: #05272f;
+  box-shadow: 0 18px 50px rgba(2,8,12,0.22), inset 0 1px 0 rgba(255,255,255,0.6);
+  border: 1px solid rgba(190,154,79,0.15);
+  backdrop-filter: blur(8px) saturate(1.05);
+  font-weight:700;
+  letter-spacing: 0.2px;
+  animation: toast-in .28s cubic-bezier(.2,.9,.2,1);
+}
+
+/* small gold icon */
+.toast .icon {
+  width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background: linear-gradient(180deg, rgba(190,154,79,0.12), rgba(190,154,79,0.06));
+  color: var(--gold);
+  font-size:18px;
+  box-shadow: 0 8px 24px rgba(190,154,79,0.06), inset 0 -2px 6px rgba(255,255,255,0.12);
+  flex: 0 0 36px;
+}
+
+/* message and subtle details */
+.toast .msg {
+  flex:1;
+  font-size:0.95rem;
+  color:#08323a;
+}
+
+/* progress bar at bottom of toast */
+.toast .progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 4px;
+  border-bottom-left-radius:10px;
+  border-bottom-right-radius:10px;
+  background: linear-gradient(90deg, rgba(0,0,0,0.03), rgba(0,0,0,0.01));
+  overflow:hidden;
+}
+.toast .progress > i {
+  display:block;
+  height:100%;
+  width:100%;
+  transform-origin:left center;
+  background: linear-gradient(90deg, var(--gold), rgba(190,154,79,0.6));
+  transform: scaleX(1);
+  animation: toast-progress linear forwards;
+}
+
+/* subtle close button */
+.toast .close {
+  background:transparent;border:0;color:rgba(3,24,28,0.6);cursor:pointer;font-weight:800;padding:6px;border-radius:8px;
+}
+
+/* entrance / exit */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-12px) scale(.995); }
+}
+/* progress shrinks to zero over duration (js sets duration via inline style when needed) */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* View-mode specific tweaks: allow the smartphone/pc selector to truly switch layout */
+body[data-view-mode="pc"] .container{
+  max-width:980px;
+  margin:20px auto;
+  /* make the shell feel like a desktop app with more breathing room */
+  padding-bottom:56px;
+}
+body[data-view-mode="pc"] .content{ gap:18px; }
+body[data-view-mode="pc"] .left{ width:320px; }
+body[data-view-mode="pc"] .bottom-nav{ display:flex !important; }
+
+body[data-view-mode="smart"] .container{
+  max-width:100%;
+  margin:0;
+  padding-bottom:56px;
+}
+body[data-view-mode="smart"] .content{ gap:10px; }
+body[data-view-mode="smart"] .left{ width:100%; }
+
+/* Explicit override so bottom-nav is visible in smartphone mode even on narrow view */
+body[data-view-mode="smart"] .bottom-nav{ display:flex; }
+
+/* Descrizioni / etichette in verde (I miei GPU) */
+#page-my-devices .stat .left .small,
+#page-my-devices .stat .left .meta,
+#page-my-devices .stat .left .type,
+#page-my-devices .stat .small,
+#page-my-devices .stat .meta,
+#page-my-devices .stat .left label,
+#page-my-devices .stat .left .label {
+  color: #00FF00 !important;
+  font-weight:700 !important;
+}
+
+/* Valori numerici, importi, date, orari in rosso (I miei GPU) */
+#page-my-devices .stat .left strong,
+#page-my-devices .stat .left .amount,
+#page-my-devices .stat .left .numeric,
+#page-my-devices .stat .amount,
+#page-my-devices .stat .stat-value,
+#page-my-devices .stat .left em,
+#page-my-devices .stat .left span.value,
+#page-my-devices .stat .left .value,
+#page-my-devices .stat .left .data-value,
+#page-my-devices .stat .left .date,
+#page-my-devices .stat .left .time {
+  color: #FF0000 !important;
+  font-weight:900 !important;
+}
+
+/* Subtle adjustment: enlarge header controls in PC mode for touch/mouse ergonomics */
+body[data-view-mode="pc"] .zoom-btn{ min-width:42px; height:42px; border-radius:10px; }
+
+/* User-requested: Etichette in verde scuro e valori in rosso brillante per i dispositivi (I miei GPU) */
+#my-devices .gpu-card *:not(strong):not(.amount):not(.numeric) {
+    color: #00CC00 !important; /* verde più leggibile su sfondo scuro */
+}
+
+/* Valori numerici, importi, date, orari in rosso brillante */
+#my-devices .gpu-card strong,
+#my-devices .gpu-card .amount,
+#my-devices .gpu-card .numeric {
+    color: #FF5555 !important; /* rosso più visibile */
+}
+
+/* Tutto il testo della pagina "I miei GPU" in verde acceso (precedenza alta) */
+/* Enhanced visibility: larger, bolder labels and much more prominent data values,
+   clearer progress bar and highlighted accumulated earnings for purchased devices. */
+#my-devices .gpu-card * {
+    color: #00FF00 !important;
+}
+
+/* Improve card readability and prominence for "I miei GPU" owned-device entries
+   - Compact single-row layout with ellipsis to avoid wrapping
+   - Clear left (info) / right (controls) columns, larger labels and values for quick scan
+   - Stronger contrast and consistent spacing for mobile and desktop
+*/
+#page-my-devices .stat{
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,250,255,0.98));
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid rgba(19,120,184,0.06);
+  box-shadow:0 10px 26px rgba(6,28,48,0.06);
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+/* Left: compact info column (image + main text), prevents wrapping */
+#page-my-devices .stat > div:first-child{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  min-width:0; /* allow children to shrink with ellipsis */
+  flex:1 1 auto;
+}
+
+/* Make image consistent and slightly larger for recognition */
+#page-my-devices .stat img{
+  width:80px;
+  height:80px;
+  object-fit:cover;
+  border-radius:10px;
+  flex:0 0 80px;
+}
+
+/* Text container: single-line title + single-line metadata row with ellipsis */
+#page-my-devices .stat .left{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+  width:100%;
+}
+#page-my-devices .stat .left .title{
+  font-weight:900;
+  font-size:1.02rem;
+  color:#0a7a45;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#page-my-devices .stat .left .subtitle{
+  font-weight:700;
+  font-size:0.92rem;
+  color:var(--muted);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Key numeric/value row: right-aligned compact pill and TFLOPS line */
+#page-my-devices .stat .left .metrics{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-top:4px;
+  white-space:nowrap;
+}
+#page-my-devices .stat .left .metrics .amount{
+  font-weight:900;
+  color:var(--gold);
+  background:linear-gradient(90deg, rgba(190,154,79,0.08), rgba(255,255,255,0.02));
+  padding:6px 8px;
+  border-radius:8px;
+  font-size:0.98rem;
+  min-width:88px;
+  text-align:center;
+}
+#page-my-devices .stat .left .metrics .tflops{
+  font-weight:800;
+  color:#03181d;
+  font-size:0.92rem;
+  opacity:0.92;
+}
+
+/* Right: controls column kept compact and touch-friendly */
+#page-my-devices .stat > div.controls{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:flex-end;
+  flex:0 0 auto;
+  min-width:140px;
+}
+
+/* Buttons: larger tap targets and clear visual hierarchy */
+#page-my-devices .stat .controls .btn{
+  min-width:140px;
+  padding:10px 12px;
+  font-weight:900;
+  border-radius:12px;
+  font-size:0.96rem;
+}
+
+/* Claimed / completed visual badge */
+#page-my-devices .stat .claimed-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:10px;
+  background:linear-gradient(90deg, rgba(10,122,69,0.06), rgba(255,255,255,0.02));
+  color:#0a7a45;
+  font-weight:900;
+  font-size:0.95rem;
+}
+
+/* Progress bar small and unobtrusive on right column (kept for accessibility) */
+#page-my-devices .stat .progress-wrap{
+  width:180px;
+  max-width:40vw;
+}
+#page-my-devices .stat .progress-wrap .bar{
+  height:8px;
+  border-radius:8px;
+  background:linear-gradient(90deg, rgba(0,0,0,0.06), rgba(0,0,0,0.03));
+  overflow:hidden;
+}
+#page-my-devices .stat .progress-wrap .bar > div{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  transition:width .45s ease;
+}
+
+/* Reduce visual noise: de-emphasize helper small text while keeping legibility */
+#page-my-devices .stat .small, 
+#page-my-devices .stat .meta {
+  color: rgba(3,24,28,0.7) !important;
+  font-weight:700;
+  font-size:0.9rem;
+}
+
+/* Ensure single-line layout on very small screens: collapse metrics into one line and allow controls to wrap */
+@media (max-width:480px){
+  #page-my-devices .stat{
+    padding:10px;
+    gap:10px;
+  }
+  #page-my-devices .stat .left .title{ font-size:1rem; }
+  #page-my-devices .stat .left .metrics{ gap:8px; font-size:0.88rem; }
+  #page-my-devices .stat > div.controls{ min-width:120px; }
+  #page-my-devices .stat img{ width:64px;height:64px;flex:0 0 64px; }
+}
+
+/* I miei GPU — refined luxury card visuals (visual-only) */
+#page-my-devices .stat {
+  background: linear-gradient(180deg, #fbfcfd, #f6fbff);
+  border: 1px solid rgba(10,35,45,0.06);
+  padding: 14px;
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(2,12,18,0.06);
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+#page-my-devices .stat:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 30px 80px rgba(4,24,34,0.10);
+}
+
+/* Left column: image + info */
+#page-my-devices .stat > div:first-child {
+  display:flex;
+  gap:14px;
+  align-items:center;
+  flex:1 1 auto;
+  min-width:0;
+}
+#page-my-devices .stat img {
+  width:84px;
+  height:84px;
+  object-fit:cover;
+  border-radius:12px;
+  border: 1px solid rgba(0,0,0,0.04);
+  box-shadow: 0 10px 30px rgba(8,30,40,0.06);
+  flex:0 0 84px;
+}
+
+/* Title and meta */
+#page-my-devices .stat .left .title {
+  font-weight:900;
+  font-size:1.02rem;
+  color:#03181d;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#page-my-devices .stat .left .subtitle {
+  font-weight:700;
+  font-size:0.92rem;
+  color: #4b7f87;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Metrics row (compact, elegant) */
+#page-my-devices .stat .left .metrics{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-top:6px;
+  flex-wrap:wrap;
+}
+#page-my-devices .stat .left .metrics .amount{
+  font-weight:900;
+  color:#b98f46; /* gold */
+  background: linear-gradient(90deg, rgba(185,143,70,0.06), rgba(255,255,255,0.02));
+  padding:6px 10px;
+  border-radius:10px;
+  font-size:0.98rem;
+  min-width:98px;
+  text-align:center;
+}
+#page-my-devices .stat .left .metrics .tflops{
+  font-weight:800;
+  color:#0a7a45;
+  font-size:0.92rem;
+  opacity:0.95;
+}
+
+/* Right controls: compact, clear hierarchy */
+#page-my-devices .stat > div.controls{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:flex-end;
+  flex:0 0 auto;
+  min-width:140px;
+}
+
+/* Buttons: subtle, luxurious */
+#page-my-devices .stat .controls .btn{
+  min-width:140px;
+  padding:10px 12px;
+  font-weight:900;
+  border-radius:12px;
+  font-size:0.96rem;
+  background: linear-gradient(90deg, rgba(31,127,179,0.10), rgba(15,95,138,0.06));
+  color:#03181d;
+  border: 1px solid rgba(3,24,28,0.04);
+  box-shadow: 0 8px 24px rgba(6,28,48,0.04);
+}
+#page-my-devices .stat .controls .btn.primary {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color:#fff;
+  border: none;
+  box-shadow: 0 18px 44px rgba(19,120,184,0.12);
+}
+
+/* Claimed badge */
+#page-my-devices .stat .claimed-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:10px;
+  background:rgba(10,122,69,0.06);
+  color:#0a7a45;
+  font-weight:900;
+  font-size:0.95rem;
+}
+
+/* Progress: compact and low-contrast */
+#page-my-devices .stat .progress-wrap{
+  width:180px;
+  max-width:36vw;
+}
+#page-my-devices .stat .progress-wrap .bar{
+  height:8px;
+  border-radius:8px;
+  background:linear-gradient(90deg, rgba(0,0,0,0.04), rgba(0,0,0,0.02));
+  overflow:hidden;
+}
+#page-my-devices .stat .progress-wrap .bar > div{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2));
+  transition:width .45s ease;
+}
+
+/* Small text and labels: elegant muted green for labels, dark value color for numbers */
+#page-my-devices .stat .left .small,
+#page-my-devices .stat .left .meta {
+  color: #3e6f76;
+  font-weight:700;
+  font-size:0.9rem;
+}
+#page-my-devices .stat .left strong,
+#page-my-devices .stat .left .amount,
+#page-my-devices .stat .left .numeric,
+#page-my-devices .stat .amount,
+#page-my-devices .stat .stat-value {
+  color: #b21c1c;
+  font-weight:900;
+}
+
+/* Responsive tweaks */
+@media (max-width:480px) {
+  #page-my-devices .stat {
+    padding:10px;
+    gap:10px;
+  }
+  #page-my-devices .stat img { width:64px; height:64px; flex:0 0 64px; }
+  #page-my-devices .stat .controls { min-width:120px; }
+}
+
+/* Elegant professional styling for the permanent active status label shown on device cards */
+#page-my-devices .permanent-active-label,
+#my-devices .permanent-active-label,
+.permanent-active-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(185,143,70,0.12), rgba(255,255,255,0.02));
+  color: #072428;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.6px;
+  box-shadow: 0 8px 28px rgba(16,40,48,0.08), inset 0 1px 0 rgba(255,255,255,0.6);
+  border: 1px solid rgba(185,143,70,0.14);
+  backdrop-filter: blur(6px) saturate(1.05);
+  transition: transform .18s cubic-bezier(.2,.9,.2,1), box-shadow .18s ease;
+  white-space: nowrap;
+}
+
+/* small decorative flashing neo-green dot icon left of the label */
+#page-my-devices .permanent-active-label::before,
+#my-devices .permanent-active-label::before,
+.permanent-active-label::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  /* darker green center and deeper outer tone for a more subdued, darker indicator */
+  background: radial-gradient(circle at 35% 35%, #9fbf10 0%, #4f7a00 45%, rgba(79,122,0,0.12) 70%);
+  box-shadow: 0 6px 18px rgba(79,122,0,0.30), 0 0 10px rgba(79,122,0,0.22);
+  flex: 0 0 10px;
+  /* subtle pulsing / blink to draw attention */
+  animation: cup9-flash-green 1200ms ease-in-out infinite;
+}
+
+/* pulsing keyframes for the neon dot */
+@keyframes cup9-flash-green {
+  0%   { transform: scale(1); opacity: 1; filter: drop-shadow(0 6px 12px rgba(166,255,0,0.18)); }
+  50%  { transform: scale(1.42); opacity: 0.55; filter: drop-shadow(0 10px 28px rgba(166,255,0,0.28)); }
+  100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 6px 12px rgba(166,255,0,0.18)); }
+}
+
+/* subtle hover lift */
+#page-my-devices .permanent-active-label:hover,
+#my-devices .permanent-active-label:hover,
+.permanent-active-label:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 48px rgba(16,40,48,0.12), inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+/* compact variant for narrow screens */
+@media (max-width:480px){
+  #page-my-devices .permanent-active-label,
+  #my-devices .permanent-active-label,
+  .permanent-active-label {
+    padding: 6px 10px;
+    font-size: 0.88rem;
+    gap: 8px;
+  }
+}
+
+/* User-requested: make "I miei GPU" device cards more compact while visually luxurious.
+   These overrides keep all logic intact but reduce padding, image sizes and typography so cards fit more items,
+   and add refined glass/gold accents for a premium look. */
+
+#page-my-devices .stat {
+  /* remove left reserved space so content starts flush with card edge */
+  padding:8px 8px 8px 0;
+  gap:8px;
+  margin-bottom:6px;
+  border-radius:10px;
+  background: linear-gradient(180deg, rgba(250,250,252,0.98), rgba(244,249,252,0.98));
+  border: 1px solid rgba(185,143,70,0.05);
+  box-shadow: 0 8px 20px rgba(6,12,18,0.05), inset 0 1px 0 rgba(255,255,255,0.5);
+  transition: transform .12s ease, box-shadow .12s ease;
+  align-items:center;
+  display:flex;
+  justify-content:space-between;
+  font-size:0.88rem;
+  line-height:1;
+}
+
+/* Compact left column — make content flush to the left edge */
+#page-my-devices .stat > div:first-child{
+  gap:4px;
+  min-width:0;
+  flex:1 1 auto;
+  align-items:center;
+  margin-left:0;
+  padding-left:0;
+}
+
+/* Even smaller image to save vertical space but keep crisp rounded look */
+#page-my-devices .stat img{
+  width:44px;
+  height:44px;
+  object-fit:cover;
+  border-radius:8px;
+  flex:0 0 44px;
+  border: 1px solid rgba(185,143,70,0.06);
+  box-shadow: 0 6px 18px rgba(8,26,34,0.05);
+}
+
+/* Tight title + subtitle sizing */
+#page-my-devices .stat .left .title{
+  font-size:0.92rem;
+  font-weight:800;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  color:#0a7a45;
+}
+#page-my-devices .stat .left .subtitle{
+  font-size:0.8rem;
+  color:#4b7f87;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Compact metrics pill */
+#page-my-devices .stat .left .metrics{
+  gap:6px;
+  margin-top:4px;
+  align-items:center;
+  font-size:0.82rem;
+}
+#page-my-devices .stat .left .metrics .amount{
+  min-width:68px;
+  padding:3px 6px;
+  font-size:0.9rem;
+  border-radius:8px;
+}
+
+/* Controls column made smaller and more vertical-compact */
+#page-my-devices .stat > div.controls{
+  min-width:100px;
+  gap:6px;
+  align-items:flex-end;
+}
+#page-my-devices .stat .controls .btn{
+  min-width:110px;
+  padding:6px 8px;
+  font-size:0.86rem;
+  border-radius:10px;
+}
+
+/* Progress bar reduced to a slimmer elegant line */
+#page-my-devices .stat .progress-wrap{
+  width:140px;
+  max-width:34vw;
+}
+#page-my-devices .stat .progress-wrap .bar{
+  height:5px;
+  border-radius:6px;
+}
+#page-my-devices .stat .progress-wrap .bar > div{
+  transition: width .35s ease;
+}
+
+/* Reduce some small text weight and size for denser layout */
+#page-my-devices .stat .small,
+#page-my-devices .stat .meta {
+  font-size:0.80rem !important;
+  color: rgba(3,24,28,0.70) !important;
+}
+
+/* Slightly more compact permanent active label */
+#page-my-devices .permanent-active-label {
+  padding:5px 8px;
+  font-size:0.82rem;
+  background: linear-gradient(90deg, rgba(185,143,70,0.09), rgba(255,255,255,0.01));
+  color:#072428;
+  border:1px solid rgba(185,143,70,0.10);
+  box-shadow: 0 6px 20px rgba(16,40,48,0.05);
+}
+
+/* Hover lift reduced so compact list doesn't shift too much */
+#page-my-devices .stat:hover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(4,24,34,0.07); }
+
+/* Tight mobile adjustments */
+@media (max-width:480px){
+  #page-my-devices .stat{
+    padding:6px;
+    gap:6px;
+    font-size:0.86rem;
+  }
+  #page-my-devices .stat img{ width:40px; height:40px; flex:0 0 40px; }
+  #page-my-devices .stat .left .title{ font-size:0.9rem; }
+  #page-my-devices .stat .left .metrics{ font-size:0.78rem; gap:6px; }
+  #page-my-devices .stat > div.controls { min-width:96px; }
+}
+
+/* Make sure the ultra-compact styles do not change functional selectors used by JS (only visual changes) */
+
+/* ---------- User request overrides: remove interactive controls in "I miei GPU" and further compact cards ---------- */
+/* Hide all interactive buttons and control columns within the "I miei GPU" page so devices act as permanent/automatic */
+#page-my-devices .stat .controls,
+#page-my-devices .stat .controls * {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
+/* Hide any claim/start/stop/select-cycle buttons that might be rendered elsewhere inside the page */
+#page-my-devices .stat button,
+#page-my-devices .stat .claim-btn,
+#page-my-devices .stat .select-cycle,
+#page-my-devices .stat .clime-btn,
+#page-my-devices .stat .buy-btn,
+#page-my-devices .stat .details-btn,
+#page-my-devices .stat .otp-btn,
+#page-my-devices .stat .details-plus,
+#page-my-devices .stat .buy-contract {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
+/* Remove any residual clickable look for the right column area */
+#page-my-devices .stat > div.controls { width: 0 !important; min-width: 0 !important; padding: 0 !important; margin: 0 !important; }
+
+/* Further shrink the device cards globally in the "I miei GPU" section */
+#page-my-devices .stat {
+  padding: 6px 8px !important;
+  gap: 8px !important;
+  border-radius: 10px !important;
+  margin-bottom: 8px !important;
+  font-size: 0.86rem !important;
+}
+
+/* Reduce image size and spacing for compactness */
+#page-my-devices .stat img{
+  width:40px !important;
+  height:40px !important;
+  flex:0 0 40px !important;
+  border-radius:8px !important;
+}
+
+/* Compact title/subtitle lines */
+#page-my-devices .stat .left .title{
+  font-size:0.9rem !important;
+  font-weight:800 !important;
+}
+#page-my-devices .stat .left .subtitle{
+  font-size:0.78rem !important;
+}
+
+/* Slimmer metric pill */
+#page-my-devices .stat .left .metrics .amount{
+  min-width:56px !important;
+  padding:4px 6px !important;
+  font-size:0.86rem !important;
+}
+
+/* Slimmer progress bar */
+#page-my-devices .stat .progress-wrap{
+  width:120px !important;
+}
+#page-my-devices .stat .progress-wrap .bar{ height:4px !important; border-radius:6px !important; }
+
+/* Remove any labels that explicitly invite interaction — keep only passive info */
+#page-my-devices .stat .small,
+#page-my-devices .stat .meta {
+  font-size:0.78rem !important;
+  color: rgba(3,24,28,0.66) !important;
+  pointer-events: none !important;
+}
+
+/* Ensure layout does not collapse awkwardly when controls are removed */
+#page-my-devices .stat { align-items: center !important; }
+
+/* Keep permanent-active label small and non-interactive */
+#page-my-devices .permanent-active-label { padding:4px 8px !important; font-size:0.82rem !important; }
+
+/* Also hide claim buttons that may have been injected elsewhere by scripts */
+.claim-btn,
+button.claim-btn {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
+/* Maintain JS selectors but remove visual affordances: ensure invisible buttons don't create gaps */
+.stat .controls { display: flex !important; flex-direction: column; gap: 0 !important; align-items: flex-end; min-width: 0; }
+
+/* End of user-requested non-interactive compact overrides */
+
+/* Ensure left column has no reserved image space so text starts flush with the left card edge */
+#page-my-devices .stat > div:first-child{
+  display:flex;
+  gap:0 !important; /* remove any gap so text starts flush */
+  align-items:center;
+  min-width:0;
+  flex:1 1 auto;
+  padding-left:0 !important; /* ensure absolutely no left padding reserved for images */
+  margin-left:0 !important;
+}
+
+/* Hide any GPU images and completely remove their footprint so text is flush to the left border */
+#page-my-devices .stat img,
+#page-my-devices .stat img[alt]{
+  display:block !important;
+  visibility:visible !important;
+  width:48px !important;
+  height:48px !important;
+  object-fit:cover !important;
+  border-radius:8px !important;
+  margin:0 !important;
+  padding:0 !important;
+  border: 1px solid rgba(0,0,0,0.06) !important;
+  flex:0 0 48px !important;
+  box-shadow: 0 6px 18px rgba(8,26,34,0.05) !important;
+}
+
+/* Force device names in "I miei GPU" to be clearly readable GREEN for all users (highest specificity) */
+#page-my-devices .stat .left .title,
+#my-devices .stat .left .title,
+#page-my-devices .stat .left .title strong,
+#my-devices .stat .left .title strong,
+#page-my-devices .stat .left .title > * ,
+#my-devices .stat .left .title > * {
+  color: #0a7a45 !important;       /* clear green used for "Guadagno giornaliero stimato" */
+  font-weight: 900 !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0.0px rgba(0,0,0,0) !important;
+}
+
+/* Also ensure any inline elements that might be forced red elsewhere are overridden */
+#page-my-devices .stat .left .title em,
+#page-my-devices .stat .left .title span,
+#page-my-devices .stat .left .title .value {
+  color: #0a7a45 !important;
+  font-weight: 800 !important;
+}
+
+/* Keep this override last so it wins over earlier conflicting rules */
+
+/* Ensure per-device progress bars are always visible in "I miei GPU"
+   (some earlier rules hid controls — this forces the progress-wrap and inner bar
+   to be visible and rendered so each owned device shows its progress). */
+#page-my-devices .stat .progress-wrap {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 140px !important;
+  max-width: 40vw !important;
+}
+#page-my-devices .stat .progress-wrap .bar {
+  display: block !important;
+  height: 6px !important;
+  border-radius: 6px !important;
+  background: linear-gradient(90deg, rgba(0,0,0,0.04), rgba(0,0,0,0.02)) !important;
+  overflow: hidden !important;
+}
+#page-my-devices .stat .progress-wrap .bar > div {
+  display: block !important;
+  height: 100% !important;
+  width: 0% !important; /* JS will update width dynamically */
+  background: linear-gradient(90deg,var(--accent),var(--accent-2)) !important;
+  transition: width .45s ease !important;
+}
+
+/* Verified badge style (Instagram-like small check) — dark luminous blue */
+.verified-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:22px;
+  height:22px;
+  padding:0 6px;
+  border-radius:999px;
+  background: linear-gradient(90deg, #0b63a3, #0f78c1);
+  color: #ffffff;
+  font-weight:900;
+  font-size:0.86rem;
+  box-shadow: 0 8px 20px rgba(11,99,163,0.22), inset 0 1px 0 rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.06);
+  line-height:1;
+}
+
+/* Override: make purchased device names inside "I miei GPU" cards clearly readable in red */
+#page-my-devices .stat .left .title,
+#my-devices .stat .left .title {
+  color: #0a7a45 !important; /* match Guadagno giornaliero stimato green */
+  text-shadow: none !important;
+}

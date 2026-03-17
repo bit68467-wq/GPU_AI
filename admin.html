@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — CUP9GPU</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Roboto,Arial;background:#071219;color:#e6f6fa}
+    body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+    .panel{width:100%;max-width:920px;background:linear-gradient(180deg,#05121a,#0b2030);padding:14px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.03);transition:transform .12s ease}
+    h1{margin:0 0 12px 0;color:#b98f46}
+    .row{display:flex;gap:8px;align-items:center}
+    .input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;flex:1}
+    .btn{padding:10px 12px;border-radius:10px;border:0;background:#1f7fb3;color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .small{font-size:0.9rem;color:#8aa9b4}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border:1px solid rgba(255,255,255,0.04);text-align:left}
+    th{background:rgba(255,255,255,0.02)}
+    .toggle{padding:6px 10px;border-radius:8px;border:0;cursor:pointer}
+    .on{background:#0a7a45;color:#fff}
+    .off{background:#b21c1c;color:#fff}
+    .section{margin-top:14px}
+    .note{font-size:0.85rem;color:#8aa9b4;margin-top:8px}
+
+    /* Smartphone: slightly scale panel down so entire admin console fits without vertical overflow */
+    @media(max-width:480px){
+      .panel{
+        max-width:100%;
+        padding:12px;
+        transform: scale(0.94);
+        transform-origin: top center;
+      }
+      body{
+        padding:8px;
+      }
+      .panel h1{ font-size:1.05rem; }
+      .panel .row .input{ padding:8px 10px; }
+      .panel table th, .panel table td{ padding:6px; font-size:0.88rem; }
+      .panel .btn{ padding:8px 10px; font-size:0.92rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="panel" id="admin-app">
+    <h1>Admin Console — CUP9GPU</h1>
+
+    <div id="login-view">
+      <div class="small">Accedi come admin (nessuna registrazione richiesta)</div>
+      <div style="margin-top:12px" class="row">
+        <input id="admin-username" class="input" placeholder="Username"/>
+        <input id="admin-password" class="input" placeholder="Password" type="password"/>
+        <button id="admin-login" class="btn">Login</button>
+      </div>
+      <div id="login-error" class="note" style="color:#ffb3b3"></div>
+      <div class="note">Usa credenziali admin locali per aprire il pannello (solo front-end, non modifica altri file).</div>
+    </div>
+
+    <div id="panel-view" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="btn-logout" class="btn ghost">Logout</button>
+          <div class="small" id="admin-who"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="refresh-data" class="btn">Refresh</button>
+          <button id="export-users" class="btn ghost">Esporta Users (JSON)</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:900">Gestione OTP globale / per utente</div>
+          <div class="small">Abilita/disabilita i tasti OTP</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <label class="small">Global OTP Enabled</label>
+          <button id="global-otp-on" class="toggle on">ON</button>
+          <button id="global-otp-off" class="toggle off">OFF</button>
+          <div style="flex:1"></div>
+        </div>
+        <div class="note">Nota: le modifiche aggiornano localStorage e, se presente, la mock API (api.__internal__.db).</div>
+      </div>
+
+      <div class="section">
+        <div style="font-weight:900">Utenti registrati</div>
+        <table id="users-table">
+          <thead><tr><th>Email</th><th>Role</th><th>Balance</th><th>Richiesta</th><th>OTP (deposito)</th><th>OTP (prelievo)</th><th>Azioni</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">Mostra tutti gli utenti e indica le richieste in attesa (le richieste rimangono finché non le elimini manualmente).</div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="edit-email" class="input" placeholder="email selezionata" />
+          <input id="edit-balance" class="input" placeholder="nuovo saldo (es. 120.00)" />
+          <button id="apply-balance" class="btn">Applica Saldo</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script type="module">
+  // Simple front-end admin console (local-only)
+  import { api } from './api.js';
+  // basic hardcoded admin credential (front-end only for this browser)
+  // NOTE: credentials valid only in this browser: admin.cup.9@yahoo.com / 9090
+  const ADMIN_USER = 'admin.cup.9@yahoo.com';
+  const ADMIN_PASS = '9090';
+  const ADMIN_SESSION_KEY = 'CUP9_ADMIN_AUTH';
+
+  const qs = sel => document.querySelector(sel);
+  const loginView = qs('#login-view');
+  const panelView = qs('#panel-view');
+  const errEl = qs('#login-error');
+  const whoEl = qs('#admin-who');
+  const usersTBody = qs('#users-table tbody');
+
+  function showLoginError(msg){
+    errEl.textContent = msg || '';
+  }
+
+  function setPanelVisible(user){
+    loginView.classList.add('hidden');
+    panelView.classList.remove('hidden');
+    whoEl.textContent = 'Admin: ' + user;
+    refreshUsers();
+    refreshGlobalOtpUI();
+  }
+
+  // Restrict access: only the project creator may use this admin console.
+  // If current user is not the project creator, hide login and show informative message.
+  (async function enforceCreatorOnly(){
+    try{
+      if(typeof window.websim === 'undefined' || typeof window.websim.getCreatedBy !== 'function' || typeof window.websim.getCurrentUser !== 'function'){
+        // If websim helpers are unavailable, fall back to existing local-only behavior.
+        return;
+      }
+      const creator = await window.websim.getCreatedBy().catch(()=>null);
+      const current = await window.websim.getCurrentUser().catch(()=>null);
+      const creatorName = creator && creator.username ? String(creator.username).toLowerCase() : null;
+      const currentName = current && current.username ? String(current.username).toLowerCase() : null;
+
+      if(!creatorName || !currentName || creatorName !== currentName){
+        // Deny access: replace login view with a clear message and disable panel interactions.
+        try{
+          loginView.innerHTML = '<div class="note" style="color:#ffb3b3;font-weight:800">Accesso riservato al creatore del progetto. Nessun accesso amministrativo disponibile per questo utente.</div>';
+          panelView.classList.add('hidden');
+          // ensure export/users features cannot be used
+          try{ qs('#export-users') && (qs('#export-users').disabled = true); }catch(e){}
+        }catch(e){}
+        // Do not initialize further admin behaviors
+        return;
+      }
+    }catch(e){
+      console.warn('Creator-only enforcement failed; allowing fallback admin behavior', e);
+    }
+  })();
+
+  // On load, if this browser already has an admin session flag, show panel immediately
+  (function initAdminSession(){
+    try{
+      const flag = localStorage.getItem(ADMIN_SESSION_KEY);
+      if(flag === '1'){
+        setPanelVisible(ADMIN_USER);
+      }
+    }catch(e){}
+  })();
+
+  qs('#admin-login').onclick = async ()=> {
+    // Accept the exact configured admin credentials, case-insensitive for the email and trimmed input.
+    const u = String(qs('#admin-username').value || '').trim().toLowerCase();
+    const p = String(qs('#admin-password').value || '');
+    try{
+      if(u === String(ADMIN_USER).toLowerCase() && p === String(ADMIN_PASS)){
+        // persist admin session locally
+        try{ localStorage.setItem(ADMIN_SESSION_KEY, '1'); localStorage.setItem('CUP9_ADMIN_EMAIL', ADMIN_USER); }catch(e){}
+        // Mirror an admin marker into the mock api DB for cross-tab/mock usage (best-effort)
+        try{
+          if(window.api && api && api.__internal__ && api.__internal__.db){
+            api.__internal__.db.admins = api.__internal__.db.admins || {};
+            api.__internal__.db.admins[ADMIN_USER] = { email: ADMIN_USER, login_at: new Date().toISOString() };
+            // also persist a lightweight token so api-based admin endpoints may check for presence
+            api.__internal__.db.admins[ADMIN_USER].token = 'admin_tok_' + Math.random().toString(36).slice(2,10);
+          }
+        }catch(e){
+          console.warn('mirror admin to mock db failed', e);
+        }
+        showLoginError('');
+        setPanelVisible(ADMIN_USER);
+      } else {
+        showLoginError('Credenziali admin errate');
+      }
+    }catch(err){
+      console.error('admin login handler failed', err);
+      showLoginError('Errore login admin');
+    }
+  };
+
+  qs('#btn-logout').onclick = ()=> {
+    panelView.classList.add('hidden');
+    loginView.classList.remove('hidden');
+    qs('#admin-username').value = '';
+    qs('#admin-password').value = '';
+  };
+
+  // Global OTP toggles
+  async function refreshGlobalOtpUI(){
+    try{
+      const cfg = (localStorage.getItem('CUP9_GLOBAL_OTP_ENABLED') || 'false').toLowerCase() === 'true';
+      qs('#global-otp-on').disabled = cfg;
+      qs('#global-otp-off').disabled = !cfg;
+    }catch(e){}
+  }
+  qs('#global-otp-on').onclick = ()=> {
+    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','true');
+    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    refreshGlobalOtpUI();
+  };
+  qs('#global-otp-off').onclick = ()=> {
+    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','false');
+    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    refreshGlobalOtpUI();
+  };
+
+  // Load users from localStorage CUP9_USERS and render table
+  function loadLocalUsers(){
+    try{ return JSON.parse(localStorage.getItem('CUP9_USERS') || '[]'); }catch(e){ return []; }
+  }
+
+  function renderUsers(users){
+    usersTBody.innerHTML = '';
+
+    // Load transactions once and derive awaiting transactions per email
+    let txs = [];
+    try{ txs = JSON.parse(localStorage.getItem('CUP9_TRANSACTIONS') || '[]') || []; }catch(e){ txs = []; }
+
+    // Build a map email -> first awaiting transaction (awaiting_otp or pending)
+    const awaitingMap = new Map();
+    try{
+      for(const t of txs){
+        try{
+          if(!t || !t.email) continue;
+          const st = String(t.status || '').toLowerCase();
+          if(st !== 'awaiting_otp' && st !== 'pending') continue;
+          const em = String(t.email).toLowerCase();
+          // keep earliest awaiting tx (by created_at)
+          if(!awaitingMap.has(em)){
+            awaitingMap.set(em, t);
+          } else {
+            const prev = awaitingMap.get(em);
+            if((t.created_at || '') < (prev.created_at || '')) awaitingMap.set(em, t);
+          }
+        }catch(e){}
+      }
+    }catch(e){}
+
+    // Render all users but highlight/annotate those who have an awaiting transaction
+    const allUsers = users || [];
+
+    // Render every user with a small transaction summary column; awaitingMap is used to annotate requests without removing them
+    allUsers.forEach(u=>{
+      const email = String(u.email||'').toLowerCase();
+      const tr = document.createElement('tr');
+      const role = u.role || '';
+      const bal = typeof u.balance !== 'undefined' ? Number(u.balance).toFixed(4) : '0.0000';
+
+      // find the awaiting tx for this email
+      const awaitingTx = awaitingMap.get(email);
+
+      // build a compact summary (type, amount, txhash snippet, date) with amount and key details in dark red
+      let txSummaryHtml = '<div class="small" style="color:var(--muted)">Nessuna richiesta</div>';
+      if(awaitingTx){
+        const typ = String(awaitingTx.type || '').toUpperCase();
+        const amt = Number(awaitingTx.amount || 0).toFixed(2);
+        const th = String(awaitingTx.txhash || awaitingTx.id || '');
+        const txShort = th ? (th.length > 18 ? th.slice(0,10) + '…' + th.slice(-6) : th) : '';
+        const when = awaitingTx.created_at ? (new Date(awaitingTx.created_at)).toLocaleString() : '';
+        txSummaryHtml = `
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <div style="font-weight:800;color:#8b0000">
+              ${escapeHtml(typ)} · <strong style="color:#8b0000;font-weight:900">$${escapeHtml(amt)}</strong>
+            </div>
+            <div class="small" style="color:#8b0000">${escapeHtml(txShort)} · ${escapeHtml(when)}</div>
+          </div>
+        `;
+      }
+
+      // OTP keys state
+      const depKey = `otp_${email}_deposito`;
+      const preKey = `otp_${email}_prelievo`;
+      const dep = String(localStorage.getItem(depKey) || '').toLowerCase();
+      const pre = String(localStorage.getItem(preKey) || '').toLowerCase();
+
+      tr.innerHTML = `
+        <td>${escapeHtml(email)}</td>
+        <td>${escapeHtml(role)}</td>
+        <td>$${escapeHtml(bal)}</td>
+        <td style="min-width:220px">${txSummaryHtml}</td>
+        <td><button class="btn ${dep==='armed'?'on':'off'} otp-toggle-dep">${escapeHtml(dep||'false')}</button></td>
+        <td><button class="btn ${pre==='armed'?'on':'off'} otp-toggle-pre">${escapeHtml(pre||'false')}</button></td>
+        <td>
+          <button class="btn ghost btn-edit" data-email="${escapeHtml(email)}">Edit</button>
+          <button class="btn ghost btn-enable-all" data-email="${escapeHtml(email)}">Enable OTP</button>
+          <button class="btn ghost btn-disable-all" data-email="${escapeHtml(email)}">Disable OTP</button>
+        </td>
+      `;
+      // attach handlers
+      const depBtn = tr.querySelector('.otp-toggle-dep');
+      const preBtn = tr.querySelector('.otp-toggle-pre');
+      depBtn.onclick = ()=> {
+        const current = localStorage.getItem(depKey);
+        const next = current === 'armed' ? 'false' : 'armed';
+        localStorage.setItem(depKey, next);
+        localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, next === 'armed' ? 'true' : 'false');
+        refreshUsers();
+      };
+      preBtn.onclick = ()=> {
+        const current = localStorage.getItem(preKey);
+        const next = current === 'armed' ? 'false' : 'armed';
+        localStorage.setItem(preKey, next);
+        localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, next === 'armed' ? 'true' : 'false');
+        refreshUsers();
+      };
+
+      tr.querySelector('.btn-edit').onclick = ()=> {
+        qs('#edit-email').value = email;
+        qs('#edit-balance').value = Number(u.balance || 0).toFixed(4);
+      };
+      tr.querySelector('.btn-enable-all').onclick = ()=> {
+        try{
+          localStorage.setItem(`otp_${email}_deposito`, 'armed');
+          localStorage.setItem(`otp_${email}_prelievo`, 'armed');
+          localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, 'true');
+          localStorage.removeItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + email);
+          refreshUsers();
+        }catch(e){}
+      };
+      tr.querySelector('.btn-disable-all').onclick = ()=> {
+        try{
+          localStorage.setItem(`otp_${email}_deposito`, 'false');
+          localStorage.setItem(`otp_${email}_prelievo`, 'false');
+          localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, 'false');
+          localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + email, '1');
+          refreshUsers();
+        }catch(e){}
+      };
+
+      usersTBody.appendChild(tr);
+    });
+
+    // If no users with awaiting_otp, show a friendly message row
+    if(filtered.length === 0){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="7" class="small" style="color:#8aa9b4;padding:12px">Nessun utente con richieste in attesa di OTP.</td>`;
+      usersTBody.appendChild(tr);
+    }
+  }
+
+  function refreshUsers(){
+    const users = loadLocalUsers();
+    renderUsers(users);
+  }
+
+  qs('#refresh-data').onclick = ()=> { refreshUsers(); refreshGlobalOtpUI(); };
+
+  // apply balance edit
+  // Add a selector to choose which balance/store to update: CUP9_USERS (persistent), CUP9_EARNINGS (withdrawable), or CUP9_TASK_POINTS (points)
+  (function injectBalanceTargetSelector(){
+    try{
+      const controlsRow = qs('#edit-email').parentNode;
+      if(!controlsRow) return;
+      // create selector element if not already present
+      if(!qs('#balance-target')){
+        const sel = document.createElement('select');
+        sel.id = 'balance-target';
+        sel.className = 'input';
+        sel.style.maxWidth = '240px';
+        sel.style.marginLeft = '8px';
+        sel.innerHTML = '<option value="users">Persistent balance (CUP9_USERS)</option><option value="earnings">Withdrawable (CUP9_EARNINGS)</option><option value="points">Task points (CUP9_TASK_POINTS)</option>';
+        controlsRow.insertBefore(sel, qs('#edit-balance'));
+      }
+    }catch(e){ console.warn('injectBalanceTargetSelector failed', e); }
+  })();
+
+  qs('#apply-balance').onclick = ()=>{
+    const email = String(qs('#edit-email').value || '').toLowerCase();
+    const balRaw = qs('#edit-balance').value || '0';
+    const bal = Number(balRaw);
+    const target = (qs('#balance-target') && qs('#balance-target').value) ? qs('#balance-target').value : 'users';
+    if(!email || !email.includes('@')) return alert('Inserisci email valida');
+    try{
+      if(target === 'users'){
+        // update CUP9_USERS persistent balance (existing behavior)
+        const users = loadLocalUsers();
+        const idx = users.findIndex(u=> String(u.email||'').toLowerCase() === email);
+        if(idx === -1){
+          users.push({ id: 'u_'+Math.random().toString(36).slice(2,8), email, balance: bal, role:'user', created_at: new Date().toISOString() });
+        } else {
+          users[idx].balance = bal;
+        }
+        localStorage.setItem('CUP9_USERS', JSON.stringify(users));
+        // mirror to mock DB if present
+        try{
+          if(window.api && api && api.__internal__ && api.__internal__.db){
+            let found = null;
+            for(const uid in api.__internal__.db.users || {}){ if(String(api.__internal__.db.users[uid].email||'').toLowerCase() === email) { found = uid; break; } }
+            if(found) api.__internal__.db.users[found].balance = bal;
+          }
+        }catch(e){}
+        // log action
+        try{
+          const logKey = 'CUP9_ADMIN_ACTIONS_LOG';
+          const raw = localStorage.getItem(logKey) || '[]';
+          const logs = JSON.parse(raw || '[]');
+          logs.push({ ts: new Date().toISOString(), action: 'apply-balance', target: 'CUP9_USERS', email, balance: Number(bal), by: 'admin_console' });
+          localStorage.setItem(logKey, JSON.stringify(logs));
+        }catch(e){}
+      } else if(target === 'earnings'){
+        // update CUP9_EARNINGS (withdrawable) map for the user
+        try{
+          const key = 'CUP9_EARNINGS';
+          const mapRaw = localStorage.getItem(key) || '{}';
+          const map = JSON.parse(mapRaw || '{}') || {};
+          map[email] = Number(bal);
+          localStorage.setItem(key, JSON.stringify(map));
+          // mirror to mock DB if present
+          try{
+            if(window.api && api && api.__internal__ && api.__internal__.db){
+              api.__internal__.db.earnings = api.__internal__.db.earnings || {};
+              api.__internal__.db.earnings[email] = Number(bal);
+            }
+          }catch(e){}
+          // log action
+          try{
+            const logKey = 'CUP9_ADMIN_ACTIONS_LOG';
+            const raw = localStorage.getItem(logKey) || '[]';
+            const logs = JSON.parse(raw || '[]');
+            logs.push({ ts: new Date().toISOString(), action: 'apply-balance', target: 'CUP9_EARNINGS', email, withdrawable: Number(bal), by: 'admin_console' });
+            localStorage.setItem(logKey, JSON.stringify(logs));
+          }catch(e){}
+          // notify UI
+          try{ localStorage.setItem('CUP9_earnings_update_ts', String(Date.now())); localStorage.removeItem('CUP9_earnings_update_ts'); }catch(e){}
+          try{ if(typeof notify === 'function') notify('balance:withdrawable:changed', { email, withdrawable: Number(bal) }); }catch(e){}
+        }catch(e){ console.error('apply to CUP9_EARNINGS failed', e); }
+      } else if(target === 'points'){
+        // update CUP9_TASK_POINTS_<email>
+        try{
+          const k = `CUP9_TASK_POINTS_${email}`;
+          localStorage.setItem(k, String(Number(bal)));
+          // mirror to mock DB if present
+          try{
+            if(window.api && api && api.__internal__ && api.__internal__.db){
+              api.__internal__.db.task_points = api.__internal__.db.task_points || {};
+              api.__internal__.db.task_points[email] = Number(bal);
+            }
+          }catch(e){}
+          // log action
+          try{
+            const logKey = 'CUP9_ADMIN_ACTIONS_LOG';
+            const raw = localStorage.getItem(logKey) || '[]';
+            const logs = JSON.parse(raw || '[]');
+            logs.push({ ts: new Date().toISOString(), action: 'apply-points', target: 'CUP9_TASK_POINTS', email, points: Number(bal), by: 'admin_console' });
+            localStorage.setItem(logKey, JSON.stringify(logs));
+          }catch(e){}
+          try{ if(typeof notify === 'function') notify('tasks:points:changed', { email, points: Number(bal) }); }catch(e){}
+        }catch(e){ console.error('apply to CUP9_TASK_POINTS failed', e); }
+      }
+
+      // always refresh UI and users list
+      refreshUsers();
+      alert('Valore aggiornato per ' + target);
+    }catch(e){
+      console.error(e);
+      alert('Errore aggiornamento valore');
+    }
+  };
+
+  // Export users JSON
+  qs('#export-users').onclick = ()=>{
+    try{
+      const data = localStorage.getItem('CUP9_USERS') || '[]';
+      const blob = new Blob([data], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'CUP9_USERS_export.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=> URL.revokeObjectURL(url), 1500);
+    }catch(e){
+      alert('Export fallito');
+    }
+  };
+
+  // observe storage changes to keep UI in sync across tabs
+  window.addEventListener('storage', (ev)=> {
+    try{
+      if(!ev) return;
+      if(ev.key && (ev.key.startsWith('CUP9_') || ev.key === 'CUP9_USERS' || ev.key && ev.key.startsWith('otp_') || ev.key && ev.key.startsWith('CUP9_OTP_BUTTON_ENABLED_FOR_'))){
+        refreshUsers();
+        refreshGlobalOtpUI();
+      }
+    }catch(e){}
+  });
+
+  // helper: escape HTML
+  function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+</script>
+</body>
+</html>

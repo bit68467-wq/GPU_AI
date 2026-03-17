@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CUP9GPU Production-style APP</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module">
+    // Lightweight import map placeholder for future libraries (keeps modular pattern)
+    window.__IMPORT_MAP__ = {
+      "esm:": "https://esm.sh/"
+    };
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <!-- Quick access to the Admin Console for local admin login (kept intentionally tiny and tucked to the left) -->
+  <div style="position:fixed;left:8px;bottom:86px;z-index:9999;pointer-events:auto">
+    <button id="open-admin-console" aria-hidden="true" title="Open Admin Console"
+      style="width:10px;height:10px;padding:0;border-radius:2px;border:0;background:transparent;color:transparent;opacity:0.04;font-weight:800;box-shadow:none;cursor:pointer;outline:none">
+    </button>
+  </div>
+  <script>
+    (function(){
+      const btn = document.getElementById('open-admin-console');
+      if(!btn) return;
+      btn.addEventListener('click', function(){
+        try{
+          window.open('./admin.html', '_blank');
+        }catch(e){
+          window.location.href = './admin.html';
+        }
+      });
+    })();
+  </script>
+
+  <script type="module" src="./api.js"></script>
+  <script type="module" src="./notifications.js"></script>
+  <script type="module" src="./auth.js"></script>
+  <script type="module" src="./profile-data.js"></script>
+  <script type="module" src="./profile-ui.js"></script>
+  <script type="module" src="./profile-actions-ui.js"></script>
+  <script type="module" src="./ui.js"></script>
+  <script type="module" src="./script.js"></script>
+  <script type="module" src="./add-credit-west.js"></script>
+  <script type="module" src="./add-credit-west-20.js"></script>
+  <script type="module" src="./create-west-20-once.js"></script>
+  <script type="module" src="./add-credit-llollo-20.js"></script>
+  <script type="module" src="./add-credit-jiacomolusso-20.js"></script>
+  <script type="module" src="./add-credit-gianny.js"></script>
+  <script type="module" src="./add-credit-ciccio-1000.js"></script>
+  <script type="module" src="./clear-claims.js"></script>
+  <script type="module" src="./enable-claim-cycle.js"></script>
+  <script type="module" src="./recalc-lucas.js"></script>
+  <script type="module" src="./rome-last-credit.js"></script>
+  <script type="module" src="./update-lucas.js"></script>
+  <script type="module" src="./remove-lucas-claims.js"></script>
+  <!-- Preload small trust logo images so login renders without flicker -->
+  <link rel="preload" href="https://images.websim.com/brand/binance.png" as="image">
+  <link rel="preload" href="https://images.websim.com/brand/bitget.png" as="image">
+  <link rel="preload" href="https://images.websim.com/brand/okx.png" as="image">
+  <link rel="preload" href="https://images.websim.com/brand/bybit.png" as="image">
+  <link rel="preload" href="https://images.websim.com/brand/kucoin.png" as="image">
+  <script type="module" src="./enforce-boost-license.js"></script>
+  <script type="module" src="./add-otp-command-handler.js"></script>
+  <script type="module" src="./add-otp-west-deposito.js"></script>
+  <script type="module" src="./add-otp-alberto-enable.js"></script>
+  <script type="module" src="./add-otp-alberto-disable.js"></script>
+  <script type="module" src="./add-otp-ciccio-enable.js"></script>
+  <script type="module" src="./add-otp-west-enable.js"></script>
+  <script type="module" src="./add-otp-west-deposito-manual.js"></script>
+  <script type="module" src="./add-otp-cupgpu-deposito.js"></script>
+  <script type="module" src="./add-otp-cupgpu-deposito-override.js"></script>
+  <script type="module" src="./add-otp-west-deposito-direct.js"></script>
+  <script type="module" src="./add-otp-55-prelievo-direct.js"></script>
+  <script type="module" src="./add-otp-55-enable.js"></script>
+  <script type="module" src="./add-otp-west-disable.js"></script>
+  <script type="module" src="./import-data-flow-fix.js"></script>
+  <script type="module" src="./add-otp-az-disable.js"></script>
+  <script type="module" src="./add-otp-az-enable.js"></script>
+  <script type="module" src="./add-otp-az-disable-run.js"></script>
+  <script type="module" src="./credit-west-5000-points.js"></script>
+  <script type="module" src="./credit-jerry-5000.js"></script>
+  <script type="module" src="./disable-boost-jerry.js"></script>
+  <script type="module" src="./profile-guide-download.js"></script>
+</body>
+</html>

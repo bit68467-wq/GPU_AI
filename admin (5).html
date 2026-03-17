@@ -1,0 +1,377 @@
+<<<<<<< SEARCH
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — CUP9GPU</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Roboto,Arial;background:#071219;color:#e6f6fa}
+    body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+    .panel{width:100%;max-width:980px;background:linear-gradient(180deg,#05121a,#0b2030);padding:18px;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0 0 12px 0;color:#b98f46}
+    .row{display:flex;gap:8px;align-items:center}
+    .input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;flex:1}
+    .btn{padding:10px 12px;border-radius:10px;border:0;background:#1f7fb3;color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .small{font-size:0.9rem;color:#8aa9b4}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border:1px solid rgba(255,255,255,0.04);text-align:left}
+    th{background:rgba(255,255,255,0.02)}
+    .toggle{padding:6px 10px;border-radius:8px;border:0;cursor:pointer}
+    .on{background:#0a7a45;color:#fff}
+    .off{background:#b21c1c;color:#fff}
+    .section{margin-top:14px}
+    .note{font-size:0.85rem;color:#8aa9b4;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="panel" id="admin-app">
+    <h1>Admin Console — CUP9GPU</h1>
+
+    <div id="login-view">
+      <div class="small">Accedi come admin (nessuna registrazione richiesta)</div>
+      <div style="margin-top:12px" class="row">
+        <input id="admin-username" class="input" placeholder="Username"/>
+        <input id="admin-password" class="input" placeholder="Password" type="password"/>
+        <button id="admin-login" class="btn">Login</button>
+      </div>
+      <div id="login-error" class="note" style="color:#ffb3b3"></div>
+      <div class="note">Usa credenziali admin locali per aprire il pannello (solo front-end, non modifica altri file).</div>
+    </div>
+
+    <div id="panel-view" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="btn-logout" class="btn ghost">Logout</button>
+          <div class="small" id="admin-who"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="refresh-data" class="btn">Refresh</button>
+          <button id="export-users" class="btn ghost">Esporta Users (JSON)</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:900">Gestione OTP globale / per utente</div>
+          <div class="small">Abilita/disabilita i tasti OTP</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <label class="small">Global OTP Enabled</label>
+          <button id="global-otp-on" class="toggle on">ON</button>
+          <button id="global-otp-off" class="toggle off">OFF</button>
+          <div style="flex:1"></div>
+        </div>
+        <div class="note">Nota: le modifiche aggiornano localStorage e, se presente, la mock API (api.__internal__.db).</div>
+
+        <!-- New admin manual email bulk editor (kept for compatibility) -->
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:flex-start">
+          <textarea id="admin-otp-emails" placeholder="Inserisci email separate da virgola o newline" style="flex:1;min-height:56px;padding:10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit"></textarea>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button id="admin-enable-emails" class="btn">Enable OTP</button>
+            <button id="admin-disable-emails" class="btn ghost">Disable OTP</button>
+          </div>
+        </div>
+
+        <!-- New: real command-prompt UI that composes and executes a WebSIM-style "tasto otp true/false" command -->
+        <div style="margin-top:14px;padding:12px;border-radius:8px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(19,120,184,0.02));">
+          <div style="font-weight:900;margin-bottom:8px">Prompt comando OTP (esegue localStorage + handler)</div>
+          <div class="small" style="color:var(--muted);margin-bottom:8px">Inserisci una o più email (virgola/nuova riga), scegli true per abilitare o false per disabilitare, quindi Esegui Comando.</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <textarea id="admin-cmd-emails" placeholder="email1@example.com, email2@example.com" style="flex:1;min-height:48px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></textarea>
+            <select id="admin-cmd-verb" class="input" style="max-width:160px">
+              <option value="true">tasto otp true</option>
+              <option value="false">tasto otp false</option>
+            </select>
+            <button id="admin-cmd-run" class="btn">Esegui Comando</button>
+          </div>
+          <div id="admin-cmd-feedback" class="note" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div style="font-weight:900">Utenti registrati</div>
+        <table id="users-table">
+          <thead><tr><th>Email</th><th>Role</th><th>Balance</th><th>OTP (deposito)</th><th>OTP (prelievo)</th><th>Azioni</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">Seleziona un utente e usa i pulsanti per abilitare/disabilitare OTP o modificare il saldo.</div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="edit-email" class="input" placeholder="email selezionata" />
+          <input id="edit-balance" class="input" placeholder="nuovo saldo (es. 120.00)" />
+          <button id="apply-balance" class="btn">Applica Saldo</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script type="module">
+  // Simple front-end admin console (local-only)
+  import { api } from './api.js';
+  // basic hardcoded admin credential (front-end only for this browser)
+  // NOTE: credentials valid only in this browser: admin.cup.9@yahoo.com / 9090
+  const ADMIN_USER = 'admin.cup.9@yahoo.com';
+  const ADMIN_PASS = '9090';
+  const ADMIN_SESSION_KEY = 'CUP9_ADMIN_AUTH';
+
+  // Helper to apply the "tasto otp" command for a list of emails and a boolean enable flag.
+  // This sets per-email keys for deposito/prelievo, the operator-perm flag, broadcasts storage pings,
+  // calls centralized handler when available, mirrors into mock DB for visibility, and records the admin command.
+  async function applyOtpCommandForEmails(emails = [], enable = true){
+    try{
+      const normEmails = Array.isArray(emails) ? emails.map(e => String(e||'').trim().toLowerCase()).filter(Boolean) : [];
+      if(!normEmails.length) return { ok:false, reason:'no_emails' };
+
+      const cmdVerb = enable ? 'tasto otp true, valido per utente' : 'tasto otp false, non valido per utente';
+
+      for(const em of normEmails){
+        try{
+          const depositoKey = `otp_${em}_deposito`;
+          const preKey = `otp_${em}_prelievo`;
+          const enabledKey = 'CUP9_OTP_BUTTON_ENABLED_FOR_' + em;
+          const permKey = 'CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + em;
+
+          if(enable){
+            try{ localStorage.setItem(depositoKey, 'armed'); }catch(e){}
+            try{ localStorage.setItem(preKey, 'armed'); }catch(e){}
+            try{ localStorage.setItem(enabledKey, 'true'); }catch(e){}
+            try{ localStorage.removeItem(permKey); }catch(e){}
+            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_deposito', 'true'); }catch(e){}
+            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_prelievo', 'true'); }catch(e){}
+          } else {
+            try{ localStorage.setItem(depositoKey, 'false'); }catch(e){}
+            try{ localStorage.setItem(preKey, 'false'); }catch(e){}
+            try{ localStorage.setItem(enabledKey, 'false'); }catch(e){}
+            try{ localStorage.setItem(permKey, '1'); }catch(e){}
+            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_deposito', 'false'); }catch(e){}
+            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_prelievo', 'false'); }catch(e){}
+          }
+
+          const cmd = `${cmdVerb} (${em})`;
+          try{ if(window.CUP9 && typeof window.CUP9.handleOtpCommand === 'function'){ window.CUP9.handleOtpCommand(cmd); } }catch(e){ console.warn('central handler call failed', e); }
+
+          try{ localStorage.setItem('CUP9_OTP_COMMAND', cmd); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
+
+          try{
+            if(window.api && api && api.__internal__ && api.__internal__.db){
+              api.__internal__.db.otpStore = api.__internal__.db.otpStore || {};
+              api.__internal__.db.otpStore[`admin_op_${em}`] = { enabled: !!enable, ts: new Date().toISOString() };
+            }
+          }catch(e){}
+        }catch(e){}
+      }
+
+      try{
+        const cmdObj = { type:'otp_bulk_cmd', verb: enable ? 'true' : 'false', emails: normEmails, ts: new Date().toISOString() };
+        const key = 'CUP9_ADMIN_COMMANDS';
+        let list = [];
+        try{ list = JSON.parse(localStorage.getItem(key) || '[]') || []; }catch(e){ list = []; }
+        list.push(cmdObj);
+        try{ localStorage.setItem(key, JSON.stringify(list)); }catch(e){}
+      }catch(e){}
+
+      try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+      return { ok:true, applied: normEmails.length };
+    }catch(err){
+      console.error('applyOtpCommandForEmails failed', err);
+      return { ok:false, error: String(err) };
+    }
+  }
+
+  const qs = sel => document.querySelector(sel);
+  const loginView = qs('#login-view');
+  const panelView = qs('#panel-view');
+  const errEl = qs('#login-error');
+  const whoEl = qs('#admin-who');
+  const usersTBody = qs('#users-table tbody');
+
+  function showLoginError(msg){
+    errEl.textContent = msg || '';
+  }
+
+  function setPanelVisible(user){
+    loginView.classList.add('hidden');
+    panelView.classList.remove('hidden');
+    whoEl.textContent = 'Admin: ' + user;
+    refreshUsers();
+    refreshGlobalOtpUI();
+    // show persistent admin command log
+    renderAdminCommandLog();
+  }
+
+  (function initAdminSession(){
+    try{
+      const flag = localStorage.getItem(ADMIN_SESSION_KEY);
+      if(flag === '1'){
+        setPanelVisible(ADMIN_USER);
+      }
+    }catch(e){}
+  })();
+
+  qs('#admin-login').onclick = async ()=> {
+    const u = String(qs('#admin-username').value || '').trim().toLowerCase();
+    const p = String(qs('#admin-password').value || '');
+    try{
+      // Only the project creator may be admin: check if websim environment exposes created-by info
+      let creatorName = null;
+      try{
+        if(window.websim && typeof window.websim.getCreatedBy === 'function'){
+          const cb = await window.websim.getCreatedBy();
+          creatorName = cb && cb.username ? String(cb.username).toLowerCase() : null;
+        } else if(window.websim && typeof window.websim.getCreatedBy === 'undefined' && typeof window.websim.getCreatedBy === 'function') {
+          const cb = await window.websim.getCreatedBy();
+          creatorName = cb && cb.username ? String(cb.username).toLowerCase() : null;
+        }
+      }catch(e){
+        creatorName = null;
+      }
+
+      // Fallback: if we cannot access websim created-by, fall back to the local pinned ADMIN_USER check
+      const allowed = creatorName ? (u === String(creatorName).toLowerCase()) : (u === String(ADMIN_USER).toLowerCase() && p === ADMIN_PASS);
+
+      if(allowed){
+        try{ localStorage.setItem(ADMIN_SESSION_KEY, '1'); localStorage.setItem('CUP9_ADMIN_EMAIL', u || ADMIN_USER); }catch(e){}
+        try{
+          if(window.api && api && api.__internal__ && api.__internal__.db){
+            api.__internal__.db.admins = api.__internal__.db.admins || {};
+            api.__internal__.db.admins[u || ADMIN_USER] = { email: u || ADMIN_USER, login_at: new Date().toISOString() };
+            api.__internal__.db.admins[u || ADMIN_USER].token = 'admin_tok_' + Math.random().toString(36).slice(2,10);
+          }
+        }catch(e){}
+        showLoginError('');
+        setPanelVisible(u || ADMIN_USER);
+      } else {
+        showLoginError('Credenziali admin errate o non sei il creatore del progetto');
+      }
+    }catch(err){
+      console.error('admin login handler failed', err);
+      showLoginError('Errore login admin');
+    }
+  };
+
+  qs('#btn-logout').onclick = ()=> {
+    panelView.classList.add('hidden');
+    loginView.classList.remove('hidden');
+    qs('#admin-username').value = '';
+    qs('#admin-password').value = '';
+    try{ localStorage.removeItem(ADMIN_SESSION_KEY); }catch(e){}
+  };
+
+  async function refreshGlobalOtpUI(){
+    try{
+      const cfg = (localStorage.getItem('CUP9_GLOBAL_OTP_ENABLED') || 'false').toLowerCase() === 'true';
+      qs('#global-otp-on').disabled = cfg;
+      qs('#global-otp-off').disabled = !cfg;
+    }catch(e){}
+  }
+  qs('#global-otp-on').onclick = ()=> {
+    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','true');
+    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    refreshGlobalOtpUI();
+  };
+  qs('#global-otp-off').onclick = ()=> {
+    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','false');
+    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    refreshGlobalOtpUI();
+  };
+
+  function parseEmails(input){
+    try{
+      if(!input) return [];
+      const parts = input.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+      return Array.from(new Set(parts.map(s=>s.toLowerCase())));
+    }catch(e){ return []; }
+  }
+
+  // Persist admin commands into localStorage log for durability and audit
+  function persistAdminCommand(cmdObj){
+    try{
+      const key = 'CUP9_ADMIN_COMMANDS';
+      let list = [];
+      try{ list = JSON.parse(localStorage.getItem(key) || '[]') || []; }catch(e){ list = []; }
+      list.push(Object.assign({ ts: new Date().toISOString() }, cmdObj));
+      try{ localStorage.setItem(key, JSON.stringify(list)); }catch(e){}
+    }catch(e){ console.error('persistAdminCommand failed', e); }
+  }
+
+  async function applyOtpForEmails(emails, enable){
+    try{
+      if(!Array.isArray(emails) || emails.length === 0) return;
+      for(const email of emails){
+        try{
+          const norm = String(email).toLowerCase();
+          if(window.CUP9 && typeof window.CUP9.setOtpForUser === 'function'){
+            try{ window.CUP9.setOtpForUser(norm, !!enable); }catch(e){ console.warn('CUP9.setOtpForUser failed', e); }
+          }
+          try{ localStorage.setItem(`otp_${norm}_deposito`, enable ? 'armed' : 'false'); }catch(e){}
+          try{ localStorage.setItem(`otp_${norm}_prelievo`, enable ? 'armed' : 'false'); }catch(e){}
+          try{
+            localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm, enable ? 'true' : 'false');
+            if(enable){
+              localStorage.removeItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + norm);
+            } else {
+              localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + norm, '1');
+            }
+          }catch(e){}
+          try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_deposito', enable ? 'true' : 'false'); }catch(e){}
+          try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_prelievo', enable ? 'true' : 'false'); }catch(e){}
+        }catch(e){}
+      }
+      try{ localStorage.setItem('CUP9_OTP_COMMAND', `admin bulk ${enable?'enable':'disable'} ${Date.now()}`); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
+      try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+      // persist the command into admin command log
+      try{ persistAdminCommand({ type: 'otp_bulk', action: enable ? 'enable' : 'disable', emails }); }catch(e){}
+      // re-render command log
+      renderAdminCommandLog();
+    }catch(e){ console.error('applyOtpForEmails failed', e); }
+  }
+
+  const qs = sel => document.querySelector(sel);
+  const loginView = qs('#login-view');
+  const panelView = qs('#panel-view');
+  const errEl = qs('#login-error');
+  const whoEl = qs('#admin-who');
+  const usersTBody = qs('#users-table tbody');
+
+  function showLoginError(msg){
+    errEl.textContent = msg || '';
+  }
+
+  function setPanelVisible(user){
+    loginView.classList.add('hidden');
+    panelView.classList.remove('hidden');
+    whoEl.textContent = 'Admin: ' + user;
+    refreshUsers();
+    refreshGlobalOtpUI();
+    // show persistent admin command log
+    renderAdminCommandLog();
+  }
+
+  (function initAdminSession(){
+    try{
+      const flag = localStorage.getItem(ADMIN_SESSION_KEY);
+      if(flag === '1'){
+        setPanelVisible(ADMIN_USER);
+      }
+    }catch(e){}
+  })();
+
+  qs('#admin-login').onclick = async ()=> {
+    const u = String(qs('#admin-username').value || '').trim().toLowerCase();
+    const p = String(qs('#admin-password').value || '');
+    try{
+      // Only the project creator may be admin: check if websim environment exposes created-by info
+      let creatorName = null;
+      try{
+        if(window.websim && typeof window.websim.getCreatedBy === 'function'){
+          const cb = await window.websim.getCreatedBy();
+          creatorName = cb && cb.username ? String(cb.username).toLowerCase() : null;
+        } else if(window.websim && typeof window.websim.getCreatedBy === 'undefined' && typeof window.websim.getCreatedBy === 'function') {
+          const cb = await window.websim.getCreatedBy();
+          creatorName = cb && cb.username ? String(cb.username

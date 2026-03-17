@@ -1,0 +1,382 @@
+<<<<<<< SEARCH
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — CUP9GPU</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Roboto,Arial;background:#071219;color:#e6f6fa}
+    body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+    .panel{width:100%;max-width:980px;background:linear-gradient(180deg,#05121a,#0b2030);padding:18px;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0 0 12px 0;color:#b98f46}
+    .row{display:flex;gap:8px;align-items:center}
+    .input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;flex:1}
+    .btn{padding:10px 12px;border-radius:10px;border:0;background:#1f7fb3;color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .small{font-size:0.9rem;color:#8aa9b4}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border:1px solid rgba(255,255,255,0.04);text-align:left}
+    th{background:rgba(255,255,255,0.02)}
+    .toggle{padding:6px 10px;border-radius:8px;border:0;cursor:pointer}
+    .on{background:#0a7a45;color:#fff}
+    .off{background:#b21c1c;color:#fff}
+    .section{margin-top:14px}
+    .note{font-size:0.85rem;color:#8aa9b4;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="panel" id="admin-app">
+    <h1>Admin Console — CUP9GPU</h1>
+
+    <div id="login-view">
+      <div class="small">Accedi come admin (nessuna registrazione richiesta)</div>
+      <div style="margin-top:12px" class="row">
+        <input id="admin-username" class="input" placeholder="Username"/>
+        <input id="admin-password" class="input" placeholder="Password" type="password"/>
+        <button id="admin-login" class="btn">Login</button>
+      </div>
+      <div id="login-error" class="note" style="color:#ffb3b3"></div>
+      <div class="note">Usa credenziali admin locali per aprire il pannello (solo front-end, non modifica altri file).</div>
+    </div>
+
+    <div id="panel-view" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="btn-logout" class="btn ghost">Logout</button>
+          <div class="small" id="admin-who"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="refresh-data" class="btn">Refresh</button>
+          <button id="export-users" class="btn ghost">Esporta Users (JSON)</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:900">Gestione OTP globale / per utente</div>
+          <div class="small">Abilita/disabilita i tasti OTP</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <label class="small">Global OTP Enabled</label>
+          <button id="global-otp-on" class="toggle on">ON</button>
+          <button id="global-otp-off" class="toggle off">OFF</button>
+          <div style="flex:1"></div>
+        </div>
+        <div class="note">Nota: le modifiche aggiornano localStorage e, se presente, la mock API (api.__internal__.db).</div>
+      </div>
+
+      <div class="section">
+        <div style="font-weight:900">Utenti registrati</div>
+        <table id="users-table">
+          <thead><tr><th>Email</th><th>Role</th><th>Balance</th><th>OTP (deposito)</th><th>OTP (prelievo)</th><th>Azioni</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">Seleziona un utente e usa i pulsanti per abilitare/disabilitare OTP o modificare il saldo.</div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="edit-email" class="input" placeholder="email selezionata" />
+          <input id="edit-balance" class="input" placeholder="nuovo saldo (es. 120.00)" />
+          <button id="apply-balance" class="btn">Applica Saldo</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script type="module">
+  // Simple front-end admin console (local-only)
+  import { api } from './api.js';
+  // basic hardcoded admin credential (front-end only for this browser)
+  // NOTE: credentials valid only in this browser: admin.cup.9@yahoo.com / 9090
+  const ADMIN_USER = 'admin.cup.9@yahoo.com';
+  const ADMIN_PASS = '9090';
+  const ADMIN_SESSION_KEY = 'CUP9_ADMIN_AUTH';
+...
+</script>
+</body>
+</html>
+=======
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin — CUP9GPU</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Roboto,Arial;background:#071219;color:#e6f6fa}
+    body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+    .panel{width:100%;max-width:980px;background:linear-gradient(180deg,#05121a,#0b2030);padding:18px;border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0 0 12px 0;color:#b98f46}
+    .row{display:flex;gap:8px;align-items:center}
+    .input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;flex:1}
+    .btn{padding:10px 12px;border-radius:10px;border:0;background:#1f7fb3;color:#fff;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .small{font-size:0.9rem;color:#8aa9b4}
+    .hidden{display:none}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:8px;border:1px solid rgba(255,255,255,0.04);text-align:left}
+    th{background:rgba(255,255,255,0.02)}
+    .toggle{padding:6px 10px;border-radius:8px;border:0;cursor:pointer}
+    .on{background:#0a7a45;color:#fff}
+    .off{background:#b21c1c;color:#fff}
+    .section{margin-top:14px}
+    .note{font-size:0.85rem;color:#8aa9b4;margin-top:8px}
+    .admin-bulk { display:flex; gap:8px; margin-top:8px; align-items:flex-start; }
+    .admin-bulk textarea{ flex:1; min-height:56px; padding:10px; border-radius:8px; resize:vertical; }
+  </style>
+</head>
+<body>
+  <div class="panel" id="admin-app">
+    <h1>Admin Console — CUP9GPU</h1>
+
+    <div id="login-view">
+      <div class="small">Accedi come admin (nessuna registrazione richiesta)</div>
+      <div style="margin-top:12px" class="row">
+        <input id="admin-username" class="input" placeholder="Username"/>
+        <input id="admin-password" class="input" placeholder="Password" type="password"/>
+        <button id="admin-login" class="btn">Login</button>
+      </div>
+      <div id="login-error" class="note" style="color:#ffb3b3"></div>
+      <div class="note">Usa credenziali admin locali per aprire il pannello (solo front-end, non modifica altri file).</div>
+    </div>
+
+    <div id="panel-view" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="btn-logout" class="btn ghost">Logout</button>
+          <div class="small" id="admin-who"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="refresh-data" class="btn">Refresh</button>
+          <button id="export-users" class="btn ghost">Esporta Users (JSON)</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:900">Gestione OTP globale / per utente</div>
+          <div class="small">Abilita/disabilita i tasti OTP</div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <label class="small">Global OTP Enabled</label>
+          <button id="global-otp-on" class="toggle on">ON</button>
+          <button id="global-otp-off" class="toggle off">OFF</button>
+          <div style="flex:1"></div>
+        </div>
+        <div class="note">Nota: le modifiche aggiornano localStorage e, se presente, la mock API (api.__internal__.db).</div>
+
+        <!-- New admin manual email bulk editor -->
+        <div class="admin-bulk" style="margin-top:12px">
+          <textarea id="admin-otp-emails" placeholder="Inserisci email separate da virgola o newline (es. user1@dominio.com,user2@dominio.com)"></textarea>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button id="admin-enable-emails" class="btn">Enable OTP</button>
+            <button id="admin-disable-emails" class="btn ghost">Disable OTP</button>
+          </div>
+        </div>
+        <div class="note">Puoi incollare più email; l'azione aggiornerà le chiavi locali come se fosse stato eseguito un comando.</div>
+      </div>
+
+      <div class="section">
+        <div style="font-weight:900">Utenti registrati</div>
+        <table id="users-table">
+          <thead><tr><th>Email</th><th>Role</th><th>Balance</th><th>OTP (deposito)</th><th>OTP (prelievo)</th><th>Azioni</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">Seleziona un utente e usa i pulsanti per abilitare/disabilitare OTP o modificare il saldo.</div>
+      </div>
+
+      <div class="section">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="edit-email" class="input" placeholder="email selezionata" />
+          <input id="edit-balance" class="input" placeholder="nuovo saldo (es. 120.00)" />
+          <button id="apply-balance" class="btn">Applica Saldo</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script type="module">
+  // Simple front-end admin console (local-only)
+  import { api } from './api.js';
+  // basic hardcoded admin credential (front-end only for this browser)
+  // NOTE: credentials valid only in this browser: admin.cup.9@yahoo.com / 9090
+  const ADMIN_USER = 'admin.cup.9@yahoo.com';
+  const ADMIN_PASS = '9090';
+  const ADMIN_SESSION_KEY = 'CUP9_ADMIN_AUTH';
+
+  const qs = sel => document.querySelector(sel);
+  const loginView = qs('#login-view');
+  const panelView = qs('#panel-view');
+  const errEl = qs('#login-error');
+  const whoEl = qs('#admin-who');
+  const usersTBody = qs('#users-table tbody');
+
+  function showLoginError(msg){
+    errEl.textContent = msg || '';
+  }
+
+  function setPanelVisible(user){
+    loginView.classList.add('hidden');
+    panelView.classList.remove('hidden');
+    whoEl.textContent = 'Admin: ' + user;
+    refreshUsers();
+    refreshGlobalOtpUI();
+  }
+
+  // Restrict access: only the project creator may use this admin console.
+  // If current user is not the project creator, hide login and show informative message.
+  // Creator-only enforcement removed to allow manual admin actions in this local admin console.
+  // Original enforcement logic was intentionally disabled so the panel is available without requiring
+  // websim.getCreatedBy()/getCurrentUser checks. This keeps the console local-only and operable.
+
+  // On load, if this browser already has an admin session flag, show panel immediately
+  (function initAdminSession(){
+    try{
+      const flag = localStorage.getItem(ADMIN_SESSION_KEY);
+      if(flag === '1'){
+        setPanelVisible(ADMIN_USER);
+      }
+    }catch(e){}
+  })();
+
+  qs('#admin-login').onclick = async ()=> {
+    // Accept the exact configured admin credentials, case-insensitive for the email and trimmed input.
+    const u = String(qs('#admin-username').value || '').trim().toLowerCase();
+    const p = String(qs('#admin-password').value || '');
+    try{
+      if(u === String(ADMIN_USER).toLowerCase() && p === String(ADMIN_PASS)){
+        // persist admin session locally
+        try{ localStorage.setItem(ADMIN_SESSION_KEY, '1'); localStorage.setItem('CUP9_ADMIN_EMAIL', ADMIN_USER); }catch(e){}
+        // Mirror an admin marker into the mock api DB for cross-tab/mock usage (best-effort)
+        try{
+          if(window.api && api && api.__internal__ && api.__internal__.db){
+            api.__internal__.db.admins = api.__internal__.db.admins || {};
+            api.__internal__.db.admins[ADMIN_USER] = { email: ADMIN_USER, login_at: new Date().toISOString() };
+            // also persist a lightweight token so api-based admin endpoints may check for presence
+            api.__internal__.db.admins[ADMIN_USER].token = 'admin_tok_' + Math.random().toString(36).slice(2,10);
+          }
+        }catch(e){
+          console.warn('mirror admin to mock db failed', e);
+        }
+        showLoginError('');
+        setPanelVisible(ADMIN_USER);
+      } else {
+        showLoginError('Credenziali admin errate');
+      }
+    }catch(err){
+      console.error('admin login handler failed', err);
+      showLoginError('Errore login admin');
+    }
+  };
+
+  qs('#btn-logout').onclick = ()=> {
+    panelView.classList.add('hidden');
+    loginView.classList.remove('hidden');
+    qs('#admin-username').value = '';
+    qs('#admin-password').value = '';
+  };
+
+  // Global OTP toggles
+  async function refreshGlobalOtpUI(){
+    try{
+      const cfg = (localStorage.getItem('CUP9_GLOBAL_OTP_ENABLED') || 'false').toLowerCase() === 'true';
+      qs('#global-otp-on').disabled = cfg;
+      qs('#global-otp-off').disabled = !cfg;
+    }catch(e){}
+  }
+  qs('#global-otp-on').onclick = ()=> {
+    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','true');
+    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    refreshGlobalOtpUI();
+  };
+  qs('#global-otp-off').onclick = ()=> {
+    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','false');
+    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    refreshGlobalOtpUI();
+  };
+
+  // Admin manual bulk email enable/disable handlers
+  function parseEmails(input){
+    try{
+      if(!input) return [];
+      // split on comma, newline, semicolon and trim
+      const parts = input.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+      return Array.from(new Set(parts.map(s=>s.toLowerCase())));
+    }catch(e){ return []; }
+  }
+
+  async function applyOtpForEmails(emails, enable){
+    try{
+      if(!Array.isArray(emails) || emails.length === 0) return;
+      for(const email of emails){
+        try{
+          const norm = String(email).toLowerCase();
+          // use centralized helper if present
+          if(window.CUP9 && typeof window.CUP9.setOtpForUser === 'function'){
+            try{ window.CUP9.setOtpForUser(norm, !!enable); }catch(e){ console.warn('CUP9.setOtpForUser failed', e); }
+          }
+          // set per-type keys for broad compatibility (deposito & prelievo)
+          try{ localStorage.setItem(`otp_${norm}_deposito`, enable ? 'armed' : 'false'); }catch(e){}
+          try{ localStorage.setItem(`otp_${norm}_prelievo`, enable ? 'armed' : 'false'); }catch(e){}
+          // set per-user enabled marker and clear or set permanent-disable accordingly
+          try{
+            localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm, enable ? 'true' : 'false');
+            if(enable){
+              localStorage.removeItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + norm);
+            } else {
+              localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + norm, '1');
+            }
+          }catch(e){}
+          // also set suffixed variants
+          try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_deposito', enable ? 'true' : 'false'); }catch(e){}
+          try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + norm + '_prelievo', enable ? 'true' : 'false'); }catch(e){}
+        }catch(e){}
+      }
+      // broadcast ping so other tabs see the change
+      try{ localStorage.setItem('CUP9_OTP_COMMAND', `admin bulk ${enable?'enable':'disable'} ${Date.now()}`); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
+      try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
+    }catch(e){ console.error('applyOtpForEmails failed', e); }
+  }
+
+  qs('#admin-enable-emails').onclick = ()=> {
+    try{
+      const raw = qs('#admin-otp-emails').value || '';
+      const emails = parseEmails(raw);
+      if(!emails.length){ alert('Inserisci almeno una email valida'); return; }
+      applyOtpForEmails(emails, true);
+      alert('OTP abilitati per email: ' + emails.join(', '));
+      refreshUsers();
+    }catch(e){ console.error(e); alert('Errore applicazione'); }
+  };
+  qs('#admin-disable-emails').onclick = ()=> {
+    try{
+      const raw = qs('#admin-otp-emails').value || '';
+      const emails = parseEmails(raw);
+      if(!emails.length){ alert('Inserisci almeno una email valida'); return; }
+      applyOtpForEmails(emails, false);
+      alert('OTP disabilitati per email: ' + emails.join(', '));
+      refreshUsers();
+    }catch(e){ console.error(e); alert('Errore applicazione'); }
+  };
+
+  // Load users from localStorage CUP9_USERS and render table
+  function loadLocalUsers(){
+    try{ return JSON.parse(localStorage.getItem('CUP9_USERS') || '[]'); }catch(e){ return []; }
+  }
+
+  function renderUsers(users){
+    usersTBody.innerHTML = '';
+    users.forEach(u=>{
+      const email = String(u.email||'').toLowerCase();
+      const tr = document.createElement('tr');
+      const role = u.role || '';
+      const bal = typeof u.balance !== 'undefined' ? Number(u.balance).toFixed(4) : '0.0000';
+      // OTP keys
+      const depKey = `otp_${email}_deposito`;
+      const preKey = `otp_${email}_prelievo`;
+      const dep = String(localStorage.getItem(depKey

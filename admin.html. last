@@ -1,0 +1,101 @@
+</div>
+         <div class="note">Nota: le modifiche aggiornano localStorage e, se presente, la mock API (api.__internal__.db).</div>
+ 
+-        <!-- New admin manual email bulk editor -->
++        <!-- New admin manual email bulk editor (kept for compatibility) -->
+         <div style="margin-top:12px;display:flex;gap:8px;align-items:flex-start">
+           <textarea id="admin-otp-emails" placeholder="Inserisci email separate da virgola o newline" style="flex:1;min-height:56px;padding:10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:inherit"></textarea>
+           <div style="display:flex;flex-direction:column;gap:8px">
+@@ Line 74 (prev 74) @@
+             <button id="admin-disable-emails" class="btn ghost">Disable OTP</button>
+           </div>
+         </div>
++
++        <!-- New: real command-prompt UI that composes and executes a WebSIM-style "tasto otp true/false" command -->
++        <div style="margin-top:14px;padding:12px;border-radius:8px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(19,120,184,0.02));">
++          <div style="font-weight:900;margin-bottom:8px">Prompt comando OTP (esegue localStorage + handler)</div>
++          <div class="small" style="color:var(--muted);margin-bottom:8px">Inserisci una o più email (virgola/nuova riga), scegli true per abilitare o false per disabilitare, quindi Esegui Comando.</div>
++          <div style="display:flex;gap:8px;align-items:center">
++            <textarea id="admin-cmd-emails" placeholder="email1@example.com, email2@example.com" style="flex:1;min-height:48px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit"></textarea>
++            <select id="admin-cmd-verb" class="input" style="max-width:160px">
++              <option value="true">tasto otp true</option>
++              <option value="false">tasto otp false</option>
++            </select>
++            <button id="admin-cmd-run" class="btn">Esegui Comando</button>
++          </div>
++          <div id="admin-cmd-feedback" class="note" style="margin-top:10px"></div>
++        </div>
+       </div>
+ 
+       <div class="section">
+@@ Line 120 (prev 105) @@
+   const ADMIN_PASS = '9090';
+   const ADMIN_SESSION_KEY = 'CUP9_ADMIN_AUTH';
+ 
++  // Helper to apply the "tasto otp" command for a list of emails and a boolean enable flag.
++  // This sets per-email keys for deposito/prelievo, the operator-perm flag, broadcasts storage pings,
++  // calls centralized handler when available, mirrors into mock DB for visibility, and records the admin command.
++  async function applyOtpCommandForEmails(emails = [], enable = true){
++    try{
++      const normEmails = Array.isArray(emails) ? emails.map(e => String(e||'').trim().toLowerCase()).filter(Boolean) : [];
++      if(!normEmails.length) return { ok:false, reason:'no_emails' };
++
++      const cmdVerb = enable ? 'tasto otp true, valido per utente' : 'tasto otp false, non valido per utente';
++
++      for(const em of normEmails){
++        try{
++          const depositoKey = `otp_${em}_deposito`;
++          const preKey = `otp_${em}_prelievo`;
++          const enabledKey = 'CUP9_OTP_BUTTON_ENABLED_FOR_' + em;
++          const permKey = 'CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + em;
++
++          if(enable){
++            try{ localStorage.setItem(depositoKey, 'armed'); }catch(e){}
++            try{ localStorage.setItem(preKey, 'armed'); }catch(e){}
++            try{ localStorage.setItem(enabledKey, 'true'); }catch(e){}
++            try{ localStorage.removeItem(permKey); }catch(e){}
++            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_deposito', 'true'); }catch(e){}
++            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_prelievo', 'true'); }catch(e){}
++          } else {
++            try{ localStorage.setItem(depositoKey, 'false'); }catch(e){}
++            try{ localStorage.setItem(preKey, 'false'); }catch(e){}
++            try{ localStorage.setItem(enabledKey, 'false'); }catch(e){}
++            try{ localStorage.setItem(permKey, '1'); }catch(e){}
++            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_deposito', 'false'); }catch(e){}
++            try{ localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + em + '_prelievo', 'false'); }catch(e){}
++          }
++
++          const cmd = `${cmdVerb} (${em})`;
++          try{ if(window.CUP9 && typeof window.CUP9.handleOtpCommand === 'function'){ window.CUP9.handleOtpCommand(cmd); } }catch(e){ console.warn('central handler call failed', e); }
++
++          try{ localStorage.setItem('CUP9_OTP_COMMAND', cmd); localStorage.removeItem('CUP9_OTP_COMMAND'); }catch(e){}
++
++          try{
++            if(window.api && api && api.__internal__ && api.__internal__.db){
++              api.__internal__.db.otpStore = api.__internal__.db.otpStore || {};
++              api.__internal__.db.otpStore[`admin_op_${em}`] = { enabled: !!enable, ts: new Date().toISOString() };
++            }
++          }catch(e){}
++        }catch(e){}
++      }
++
++      try{
++        const cmdObj = { type:'otp_bulk_cmd', verb: enable ? 'true' : 'false', emails: normEmails, ts: new Date().toISOString() };
++        const key = 'CUP9_ADMIN_COMMANDS';
++        let list = [];
++        try{ list = JSON.parse(localStorage.getItem(key) || '[]') || []; }catch(e){ list = []; }
++        list.push(cmdObj);
++        try{ localStorage.setItem(key, JSON.stringify(list)); }catch(e){}
++      }catch(e){}
++
++      try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
++      return { ok:true, applied: normEmails.length };
++    }catch(err){
++      console.error('applyOtpCommandForEmails failed', err);
++      return { ok:false, error: String(err) };
++    }
++  }
++
+   const qs = sel => document.querySelector(sel);
+   const loginView = qs('#login-view');
+   const panelView = qs('#panel-view');
