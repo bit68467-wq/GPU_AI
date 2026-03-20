@@ -1,367 +1,247 @@
+/* Refined layout improvements: clearer spacing, improved readability and responsive consistency */
+
+/* Design tokens */
 :root{
-  /* Palette: night blue -> petrol blue background, neon-blue accents, white cards */
-  --bg-start: #041022; /* blu notte */
-  --bg-end: #07404a;   /* blu petrolio */
-  --accent: #1DE0FF;   /* blu neon */
-  --accent-2: #00B8FF;
-  --card-bg: #ffffff;  /* card white */
-  --card-shadow: rgba(2,16,26,0.12);
-  --text-primary: #ffffff;
-  --text-secondary: #cfd8dc; /* light gray */
-  --muted: #98a7ad;
-  --danger:#ff6b6b;
-  --radius:12px; /* slightly tighter radius */
-  --nav-height:64px;
+  --bg: #03131a;
+  --panel: #071923;
+  --card: #0b2630;
+  --muted: #9ab0b6;
+  --accent: #d8a93a;
+  --accent-2: #ffedc7;
+  --accent-cool: #78dfff;
+  --glass: rgba(255,255,255,0.02);
+  --danger: #ff6b6b;
+  --card-radius: 12px;
+  --gutter: 16px;
+  --nav-height: 72px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --content-bottom: calc(var(--nav-height) + 24px + var(--safe-bottom));
+  --content-bottom: calc(var(--nav-height) + 18px + var(--safe-bottom));
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   color-scheme: dark;
-  /* refined, slightly smaller typography */
-  font-family: Inter, system-ui, -apple-system, "Helvetica Neue", Arial;
-  font-size:14px; /* reduced base text for a more elegant compact look */
-  line-height:1.28;
-  -webkit-font-smoothing:antialiased;
+  font-size: 15px;
+  line-height: 1.45;
+  --max-width: 1100px;
 }
 
-/* reset & layout */
-*{box-sizing:border-box}
-html,body{
-  height:100vh;
-  margin:0;
-  background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
-  overflow:hidden;
-  color:var(--text-primary);
-}
+/* Reset & base */
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#072b33);color:var(--accent-2);overflow-x:hidden;min-width:320px;}
 
-/* app container scrolls, mobile-first */
+/* Defensive: ensure no horizontal scrolling anywhere */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #app { max-width: 100vw; overflow-x: hidden; }
+#app { -webkit-overflow-scrolling: touch; }
+
+/* App shell - center content and give breathing room */
 #app{
+  min-height:100vh;
+  padding:24px;
+  padding-bottom:var(--content-bottom);
   display:flex;
   flex-direction:column;
-  gap:12px;
-  padding:16px;
-  padding-bottom: var(--content-bottom); /* ensure content isn't hidden behind fixed nav */
-  min-height:100vh;
-  height:100%;
-  overflow:auto;
-  position:relative;
-  justify-content:flex-start;
-}
-
-/* Header */
-.header{
-  display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:10px;border-radius:14px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255,255,255,0.04);
-}
-.brand{display:flex;gap:10px;align-items:center}
-.logo{
-  width:50px;height:50px;border-radius:12px;
-  background: linear-gradient(135deg, rgba(29,224,255,0.12), rgba(0,184,255,0.08));
-  display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--accent);
+  gap:20px;
+  align-items:center;
   font-size:15px;
 }
-.h-title{font-weight:800;font-size:15px;color:var(--text-primary)}
-.h-sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
 
-/* avatar */
-.avatar{
-  width:40px;height:40px;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));
-  display:flex;align-items:center;justify-content:center;color:var(--accent);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
-  font-weight:700;
-}
-
-/* notification / bell */
-.notif-btn{
-  width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  border:1px solid rgba(255,255,255,0.03);
-  cursor:pointer;color:var(--text-secondary);font-size:18px;
-}
-.notif-btn:hover{ transform: translateY(-3px); color:var(--accent) }
-.notif-badge{
-  position:relative;
-}
-.notif-badge::after{
-  content: attr(data-count);
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  background: var(--danger);
-  color: white;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 12px;
-  font-weight:800;
-  display: inline-block;
-  min-width: 18px;
-  text-align:center;
+/* Card & container - consistent max width and inner spacing */
+/* Add clearer card variants to better differentiate sections */
+.card, .hardware-page, .card.exchange-shell {
+  width:100%;
+  max-width:var(--max-width);
+  margin:0 auto;
+  border-radius:var(--card-radius);
+  background:linear-gradient(180deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002));
+  padding:18px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.015);
+  border:1px solid rgba(255,255,255,0.02);
 }
 
-/* OTP modal */
-.notif-overlay{
-  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,8,12,0.6);z-index:120;padding:20px;
-}
-.notif-modal{
-  width:100%;max-width:520px;border-radius:12px;background:var(--card-bg);color:#03181a;padding:14px;box-shadow:0 30px 80px rgba(2,16,26,0.45);
-}
-.notif-modal .nm-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.notif-list{max-height:48vh;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-top:10px;padding-right:6px}
-.notif-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;background:linear-gradient(180deg, rgba(3,18,22,0.02), rgba(3,18,22,0.01));}
-.notif-code{font-weight:900;color:var(--accent);padding:6px 10px;border-radius:8px;background:linear-gradient(90deg, rgba(29,224,255,0.06), rgba(0,184,255,0.04));border:1px solid rgba(29,224,255,0.10)}
-.notif-meta{font-size:12px;color:var(--muted)}
-
-/* layout helpers */
-.row{display:flex;gap:10px}
-.col{flex:1}
-
-/* Card style: white card, soft shadow, rounded (compact) */
-/* Default neutral card */
-.card{
-  background: var(--card-bg);
-  padding:12px; /* reduced padding for more compact cards */
-  border-radius:var(--radius);
-  color:#072023; /* dark text inside white cards */
-  box-shadow: 0 8px 22px var(--card-shadow);
-  transition: transform .12s cubic-bezier(.2,.9,.2,1), box-shadow .12s ease;
-  border: 1px solid rgba(3,18,22,0.06);
-}
-.card:hover{ transform: translateY(-4px); box-shadow: 0 16px 36px rgba(2,16,26,0.10); }
-.card h3{margin:0 0 6px 0;font-size:14px;color:#03181a;font-family: Georgia, "Times New Roman", serif;}
-.card .section-sub{font-size:12px;color:var(--muted);margin-bottom:6px}
-
-/* Variant cards with subtle different hues for visual differentiation */
-.card.variant-teal{ background: linear-gradient(180deg,#f8ffff,#eefafb); border:1px solid rgba(0,188,255,0.06); }
-.card.variant-amber{ background: linear-gradient(180deg,#fffaf3,#fff2e6); border:1px solid rgba(255,180,0,0.06); }
-.card.variant-rose{ background: linear-gradient(180deg,#fff7f9,#fff0f3); border:1px solid rgba(255,110,110,0.06); }
-
-/* Automatic subtle alternation for cards inside the main page wrapper to visually differentiate riquadri.
-   This applies gentle background shifts in a repeating pattern to help users scan sections quickly.
-   Uses :nth-of-type on .card within the hardware-page container to avoid affecting other contexts. */
-.hardware-page .card:nth-of-type(4n+1){
-  background: linear-gradient(180deg,#f8ffff,#eefafb);
-  border:1px solid rgba(0,188,255,0.06);
-}
-.hardware-page .card:nth-of-type(4n+2){
-  background: linear-gradient(180deg,#fffaf3,#fff2e6);
-  border:1px solid rgba(255,180,0,0.06);
-}
-.hardware-page .card:nth-of-type(4n+3){
-  background: linear-gradient(180deg,#fff7f9,#fff0f3);
-  border:1px solid rgba(255,110,110,0.06);
-}
-.hardware-page .card:nth-of-type(4n+4){
-  background: linear-gradient(180deg,#fbfffb,#eefef6);
-  border:1px solid rgba(102,220,170,0.06);
+/* Elevated card variant for key panels */
+.card.elevated {
+  background: linear-gradient(180deg, rgba(255,255,255,0.008), rgba(255,255,255,0.003));
+  border: 1px solid rgba(255,255,255,0.035);
+  box-shadow: 0 26px 80px rgba(0,0,0,0.65);
+  transform: translateZ(0);
 }
 
-/* Recent actions / transaction list improvements (compact & ordered) */
-.list.recent-actions{ display:flex; flex-direction:column; gap:6px; max-height:calc(36vh); overflow:auto; padding-right:6px; }
-.tx{ display:flex; align-items:center; gap:8px; padding:8px; border-radius:10px; background:linear-gradient(180deg, rgba(3,18,22,0.01), rgba(3,18,22,0.00)); font-size:12px; }
-.tx .tx-left{ display:flex; flex-direction:column; gap:4px; min-width:100px; }
-.tx .tx-type{ font-weight:800; font-size:12px; color:#05282a; letter-spacing:0.2px; text-transform:uppercase; }
-.tx .tx-time{ font-size:11px; color:var(--muted); }
-.tx .tx-center{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
-.tx .tx-note{ font-size:12px; color:#072023; white-space:normal; word-break:break-word; overflow:hidden; text-overflow:ellipsis; max-height:2.6em; }
-.tx .tx-right{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:110px; }
-.tx .tx-amount{ font-weight:900; font-size:14px; color:#053233; }
-.tx .tx-actions{ display:flex; gap:6px; align-items:center; }
-.badge{ padding:5px 8px; border-radius:999px; font-weight:800; font-size:11px; color:#021018; background:linear-gradient(90deg,var(--accent),var(--accent-2)); }
-.badge.pending{ background: linear-gradient(90deg,#ffd866,#ffb84d); color:#241200; }
-.badge.confirmed{ background: linear-gradient(90deg,#b9ffcf,#66e8a1); color:#062312; }
-.badge.otp_sent{ background: linear-gradient(90deg,#d7f1ff,#9be6ff); color:#01283a; }
-.tx .small-action{ padding:6px 8px; border-radius:10px; font-size:12px; border:1px solid rgba(3,18,22,0.04); background:transparent; cursor:pointer; }
-
-/* make transaction list more compact on small screens */
-@media(max-width:420px){
-  .tx .tx-left{ min-width:80px; font-size:11px; }
-  .tx .tx-right{ min-width:88px; }
+/* Muted card (secondary sections) */
+.card.subtle {
+  background: linear-gradient(180deg, rgba(255,255,255,0.004), rgba(255,255,255,0.001));
+  border: 1px solid rgba(255,255,255,0.010);
+  box-shadow: none;
 }
 
-/* subtle animations for interactive elements */
-.btn, .primary { transition: transform .12s ease, box-shadow .12s ease; will-change: transform; }
-.btn:active, .primary:active { transform: translateY(1px) }
-
-/* Compact GPU trial card and chip (reduced footprint) */
-.gpu-card{
-  display:flex;
-  flex-direction:column;
-  gap:4px;
-  padding:4px; /* tighter internal padding for a smaller footprint */
-}
-/* reduce title and small text specifically inside the gpu card to avoid global changes */
-.gpu-card h3{ font-size:13px; margin-bottom:4px; }
-.gpu-card .small{ font-size:11px; color:var(--muted); }
-
-/* tighten top row spacing */
-.gpu-top{
+/* Section header treatment */
+.section-header {
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:6px;
+  gap:12px;
+  padding:10px 12px;
+  border-radius:10px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));
+  border:1px solid rgba(255,255,255,0.02);
+  margin-bottom:10px;
 }
-.gpu-info{
+.section-header h4{margin:0;font-size:14px;color:var(--accent-2);font-weight:900}
+.section-sub{font-size:13px;color:var(--muted)}
+
+/* Headings */
+h1,h2,h3 { margin:0 0 8px 0; color:var(--accent-2); font-weight:800; }
+h3 { font-size:18px; color:#fff; }
+
+/* Mini boxes: simplified and accessible */
+.mini-box {
   display:flex;
-  gap:6px;
   align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002));
+  border:1px solid rgba(255,255,255,0.025);
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  cursor:pointer;
+  min-height:56px;
 }
+.mini-box:hover { transform:translateY(-3px); box-shadow:0 12px 30px rgba(0,0,0,0.48); border-color: rgba(216,169,58,0.06); }
+.mini-box .mb-left { display:flex; gap:12px; align-items:center; min-width:0; }
+.mini-box .mb-icon { width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#06121a; background:linear-gradient(90deg,var(--accent),var(--accent-2)); }
+.mini-box .mb-title { font-weight:800; font-size:15px; color:#fff; }
+.mini-box .mb-sub { font-size:13px; color:var(--muted); }
 
-/* noticeably smaller chip for a compact footprint */
-.gpu-chip{
-  width:28px;
-  height:28px;
-  border-radius:6px;
-  background:linear-gradient(135deg, rgba(29,224,255,0.12), rgba(0,184,255,0.06));
+/* Responsive mini-grid for quick links */
+.mini-grid { display:grid; grid-template-columns:1fr; gap:12px; margin-top:12px; }
+@media(min-width:640px){ .mini-grid { grid-template-columns:repeat(2, 1fr); } }
+@media(min-width:1100px){ .mini-grid { grid-template-columns:repeat(4, 1fr); } }
+
+/* Header: more compact and balanced */
+.header{
   display:flex;
   align-items:center;
-  justify-content:center;
-  font-weight:800;
-  font-size:11px;
-  color:var(--accent);
-}
-
-/* Buttons: rounded, neon accents for primary */
-.btn{
-  background:transparent;border:1px solid rgba(3,18,22,0.06);padding:9px 12px;border-radius:12px;color:var(--accent);cursor:pointer;font-weight:700;font-size:14px;
-}
-.btn:hover{ box-shadow: 0 8px 24px rgba(13,140,170,0.06); transform: translateY(-3px); }
-.btn.ghost{background:transparent;border:0;color:var(--accent)}
-.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-
-/* primary button use neon gradient */
-.primary{
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  color: #021018;
-  padding:10px 12px;border-radius:14px;border:0;font-weight:800;cursor:pointer;font-size:14px;
-  box-shadow: 0 8px 24px rgba(29,224,255,0.10);
-}
-.primary:hover{ transform: translateY(-3px); box-shadow: 0 16px 48px rgba(29,224,255,0.12); }
-
-/* balance */
-.balance-values{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-.big{font-weight:800;font-size:18px;color:#05282a} /* slightly smaller, less aggressive */
-.muted{color:var(--muted);font-size:13px}
-
-/* stats */
-.stats{display:flex;gap:10px;margin-top:10px}
-.stat{flex:1;padding:10px;border-radius:12px;background:linear-gradient(180deg, rgba(3,18,22,0.02), rgba(3,18,22,0.01));text-align:center}
-.stat .val{font-weight:800;color:#053233;font-size:14px}
-
-/* bottom nav: integrated into page layout (non-fixed) so it is the final lower part of each page */
-.bottom-nav{
-  position:relative;
-  display:flex;
-  justify-content:space-around;
-  align-items:center;
-  height:var(--nav-height);
-  width:100%;
-  max-width: 980px;
-  margin: 12px auto 0 auto;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-  border-radius:18px;
-  padding:12px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.18);
-  z-index:2;
-  pointer-events:auto;
-}
-
-/* legacy fixed class kept for compatibility with older usage */
-.bottom-nav.fixed{
-  position:fixed;
-  left:50%;
-  transform:translateX(-50%);
-  bottom: calc(12px + var(--safe-bottom));
-  width: calc(100% - 32px);
-  max-width: 980px;
-  margin: 0;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.18);
-}
-
-/* keep the nav item styles the same */
-.nav-item{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--text-secondary);font-size:11px;cursor:pointer;padding:10px;border-radius:12px;transition:all .12s ease}
-.nav-item:hover{background:rgba(3,18,22,0.02);transform:translateY(-3px)}
-.nav-item.active{color:var(--accent);font-weight:800;background: linear-gradient(90deg, rgba(29,224,255,0.06), rgba(0,184,255,0.04))}
-
-/* Form inputs: cleaner, rounded, dark placeholder on white cards */
-.form{display:flex;flex-direction:column;gap:10px}
-.input{
-  padding:10px;border-radius:12px;background: #f6f9fb; border:1px solid rgba(3,18,22,0.04); color:#072023;
-  font-size:14px;
-}
-label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px}
-.checkbox-row{display:flex;align-items:center;gap:8px;color:var(--muted)}
-.help{font-size:12px;color:var(--muted);margin-top:6px}
-
-/* lists and tx rows */
-.list{display:flex;flex-direction:column;gap:8px;max-height:calc(40vh);overflow:auto;padding-right:6px}
-.list.recent-five{ max-height: none; overflow: visible; } /* show full 5 transactions without inner scrolling */
-
-/* Use a grid layout for predictable columns: type/time | note (flex) | amount/status */
-.tx{
-  display:grid;
-  grid-template-columns: 140px 1fr 140px;
+  justify-content:space-between;
   gap:12px;
   padding:12px;
   border-radius:12px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(3,18,22,0.00));
-  font-size:13px;
-  align-items:center;
-  align-content:center;
-  transition: background .12s ease, transform .12s ease;
-  border: 1px solid rgba(3,18,22,0.04);
+  background:linear-gradient(90deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002));
+  border:1px solid rgba(255,255,255,0.02);
 }
-.tx:hover{ transform: translateY(-3px); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(3,18,22,0.01)); }
-
-/* left column: type and time */
-.tx .tx-left{ display:flex; flex-direction:column; gap:6px; }
-.tx .tx-type{ font-weight:900; font-size:13px; color:#021018; letter-spacing:0.4px; text-transform:uppercase; }
-.tx .tx-time{ font-size:12px; color:var(--muted); }
-
-/* center column: note - allow wrapping and clearer contrast */
-.tx .tx-center{ display:block; min-width:0; }
-.tx .tx-note{
-  font-size:13px;
-  color:#05282a;
-  line-height:1.3;
-  white-space:normal;
-  word-break:break-word;
-  overflow:visible;
+.brand{display:flex;gap:12px;align-items:center}
+.logo{
+  width:48px;height:48px;border-radius:10px;
+  background:linear-gradient(135deg, rgba(120,220,255,0.06), rgba(120,220,255,0.02));
+  display:flex;align-items:center;justify-content:center;font-weight:900;color:#031016;font-size:16px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.45);
 }
+.h-title{font-weight:900;font-size:17px;color:#fff}
+.h-sub{font-size:13px;color:var(--muted)}
 
-/* right column: amount and status - right aligned */
-.tx .tx-right{ display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
-.tx .tx-amount{ font-weight:900; font-size:15px; color:#053233; }
+/* Typography helpers */
+.big{font-weight:900;font-size:22px;color:#fff}
+.small{font-size:13px;color:var(--muted)}
 
-/* badges: clearer contrast and padding */
-.badge{ padding:6px 10px; border-radius:999px; font-weight:800; font-size:12px; color:#021018; background:linear-gradient(90deg,var(--accent),var(--accent-2)); box-shadow: 0 6px 18px rgba(29,224,255,0.06); }
-.badge.pending{ background: linear-gradient(90deg,#ffd866,#ffb84d); color:#241200; box-shadow: none; }
-.badge.confirmed{ background: linear-gradient(90deg,#b9ffcf,#66e8a1); color:#062312; box-shadow: none; }
-.badge.otp_sent{ background: linear-gradient(90deg,#d7f1ff,#9be6ff); color:#01283a; box-shadow: none; }
+/* Stats and lists with consistent spacing */
+.stats{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap}
+.stat{flex:1;min-width:150px;padding:14px;border-radius:12px;background:rgba(255,255,255,0.01);text-align:center;border:1px solid rgba(255,255,255,0.01)}
+.stat .val{font-weight:900;color:#fff}
 
-/* adjust meta small text */
-.tx .meta{font-size:12px;color:var(--muted);opacity:0.95}
+/* Lists */
+.list{display:flex;flex-direction:column;gap:12px;max-height:54vh;overflow:auto;padding-right:6px}
+.tx{display:flex;justify-content:space-between;gap:14px;padding:12px;border-radius:12px;align-items:center;background:linear-gradient(180deg, rgba(255,255,255,0.003), rgba(255,255,255,0.001));border:1px solid rgba(255,255,255,0.01)}
+.tx-left{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tx-type{font-weight:800;font-size:13px;color:var(--accent-2);text-transform:uppercase}
+.tx-note{font-size:13px;color:var(--muted);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.tx-amount{font-weight:900;color:#fff;font-size:15px}
 
-/* responsive: stack columns on narrow screens */
+/* Badges: slightly smaller and compact */
+.badge{padding:6px 12px;border-radius:999px;font-weight:800;font-size:12px;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#06121a;box-shadow:0 8px 20px rgba(0,0,0,0.22)}
+.badge.pending{background:linear-gradient(90deg,#ffdca8,#ffc78a);color:#2b1700}
+.badge.otp_sent{background:linear-gradient(90deg,#dff6ff,#b9eeff);color:#012f3a}
+.badge.confirmed{background:linear-gradient(90deg,#dfffe5,#9ff1c0);color:#042a1d}
+.badge.rejected{background:linear-gradient(90deg,#ffe6e6,#ffc9c9);color:#4b1111}
+
+/* Buttons: consistent sizes and clearer focus */
+.btn{padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);background:linear-gradient(180deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002));color:var(--accent-2);font-weight:800;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(0,0,0,0.42)}
+.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#08121a;padding:10px 14px;border-radius:12px;border:0;font-weight:900;box-shadow:0 14px 36px rgba(216,169,58,0.10)}
+
+/* Hardware cards */
+.hw-card{display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:12px}
+.hw-left{display:flex;gap:12px;align-items:center;min-width:0}
+.hw-chip{width:60px;height:60px;border-radius:12px;background:linear-gradient(135deg, rgba(120,220,255,0.06), rgba(120,220,255,0.02));display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--accent-cool);font-size:16px;box-shadow:0 10px 30px rgba(0,0,0,0.40)}
+.price-badge{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#06121a;padding:8px 12px;border-radius:10px;font-weight:900;font-size:14px;box-shadow:0 10px 30px rgba(216,169,58,0.08)}
+
+/* Grid */
+.hardware-grid{display:grid;grid-template-columns:1fr;gap:14px;width:100%}
+@media(min-width:720px){.hardware-grid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:1100px){.hardware-grid{grid-template-columns:repeat(3,1fr)}}
+
+/* Bottom nav - slightly elevated, touch-friendly */
+.bottom-nav{position:relative;margin:16px 0 0 0;width:100%;max-width:var(--max-width);height:68px;border-radius:14px;background:linear-gradient(90deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002));display:flex;align-items:center;justify-content:space-around;padding:10px;border:1px solid rgba(255,255,255,0.01);box-shadow:0 14px 40px rgba(0,0,0,0.45)}
+.nav-item{display:flex;flex-direction:column;align-items:center;font-size:12px;color:var(--muted);cursor:pointer;min-width:54px}
+.nav-item.active{color:var(--accent);font-weight:900}
+
+/* Inputs & forms */
+.form{display:flex;flex-direction:column;gap:12px}
+.input{padding:12px;border-radius:10px;background:transparent;border:1px solid rgba(255,255,255,0.02);color:#fff;font-size:15px}
+
+/* Mobile tweaks */
 @media(max-width:520px){
-  .tx{ grid-template-columns: 1fr; }
-  .tx .tx-right{ align-items:flex-start; margin-top:6px; }
-  .tx .tx-left{ flex-direction:row; justify-content:space-between; align-items:center; }
+  #app { padding:14px; gap:12px; }
+  .hardware-page{padding:12px;border-radius:12px}
+  .header{padding:10px}
+  .logo{width:44px;height:44px}
+  .mini-grid{gap:10px}
+  .list{max-height:58vh}
+  .bottom-nav{height:74px;padding:8px;border-radius:12px}
 }
 
-/* OTP chip styled with accent */
-.otp{display:inline-block;padding:6px 12px;border-radius:10px;background:linear-gradient(90deg, rgba(29,224,255,0.06), rgba(0,184,255,0.04));border:1px solid rgba(29,224,255,0.12);font-weight:800;color:var(--accent)}
-
-/* utility */
+/* Utilities */
 .center{display:flex;align-items:center;justify-content:center}
-.empty-state{padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);color:var(--text-secondary);text-align:center}
+.empty-state{padding:12px;border-radius:12px;background:rgba(255,255,255,0.01);color:var(--muted);text-align:center;font-size:14px}
 
-/* responsive tweaks for larger screens */
-@media(min-width:720px){
-  #app{max-width:980px;margin:0 auto;padding-bottom:160px}
-  .card{padding:18px}
-  .list{max-height:420px}
+/* In-page notification modal (used by header bell) - constrained to page container to avoid overflow */
+.notif-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.55));
+  padding:12px;
+  z-index:60;
+  overflow:auto;
+  box-sizing:border-box;
+}
+.notif-modal{
+  width:100%;
+  max-width:820px;
+  max-height:calc(100% - 48px);
+  border-radius:12px;
+  background:linear-gradient(180deg, rgba(3,6,10,0.98), rgba(6,8,12,0.98));
+  color:var(--accent-2);
+  padding:14px;
+  box-shadow:0 36px 120px rgba(0,0,0,0.75);
+  overflow:auto;
+  border:1px solid rgba(255,255,255,0.02);
 }
 
-/* removed hardware layout and grid styles (moved to styles.hardware.css) */
+/* Ensure all overlays/modals remain inside container and don't create horizontal scroll */
+.hw-overlay, .notif-overlay { left:0; right:0; box-sizing:border-box; }
+.hw-fullscreen, .notif-modal { box-sizing:border-box; }
+
+/* Defensive: cap very long text and force wrap inside cards */
+* { word-wrap: break-word; -webkit-hyphens: auto; hyphens: auto; }
+
+/* Enable custom touch gestures for the main app container only; allow hardware page UI elements to receive normal touch interactions */
+#app {
+  touch-action: none;
+  -ms-touch-action: none;
+}
+/* Allow hardware page to handle native touch events (inputs, selects, buttons) normally */
+.hardware-page {
+  touch-action: auto;
+  -ms-touch-action: auto;
+}

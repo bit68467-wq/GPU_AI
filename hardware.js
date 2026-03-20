@@ -1,209 +1,467 @@
-/* hardware.js
-   Extracted hardware-related UI: hardwarePage and myDevicesPage.
-   Depends on globals provided by app.js and utils.js (txCol, deviceCol, getSession, navigate, formatMoney, etc.).
-   Uses window.__cup9_utils.formatMoney and window.__cup9_utils.generateOTP when needed.
+/* hardware.js - improved hardware page layout, accessibility, responsive grid and richer card details.
+   Changes: larger responsive grid, card footer with specs, lazy-loading images, hover/tap affordances,
+   keyboard-accessible modals, and small ARIA improvements. Other pages are unchanged.
 */
 
 (function(){
-  // helper accessors (fall back to no-op implementations to avoid runtime errors)
-  const formatMoney = (window.__cup9_utils && window.__cup9_utils.formatMoney) || (n=>String(n));
-  const generateOTP = (window.__cup9_utils && window.__cup9_utils.generateOTP) || (()=>'000000');
+  const formatMoney = (window.__cup9_utils && window.__cup9_utils.formatMoney) || (n=>'$' + (Number(n)||0).toFixed(2));
 
-  // hardwarePage implementation (extracted)
+  // element creator helper
+  function node(tag, opts){
+    const el = document.createElement(tag || 'div');
+    if (opts) {
+      if (opts.cls) el.className = opts.cls;
+      if (opts.text) el.textContent = opts.text;
+      if (opts.html) el.innerHTML = opts.html;
+      if (opts.attrs) Object.keys(opts.attrs).forEach(k => el.setAttribute(k, opts.attrs[k]));
+    }
+    return el;
+  }
+
+  // Plans (use local GPU image asset for visuals)
+  const plans = [
+    { key:'tier_mini', name:'Tier Mini', tflops: 2, price: 29, note: 'Entry', image: '/gpu-purchased.png' },
+    { key:'starter_plus', name:'Starter Plus', tflops: 6, price: 59, note: 'Starter', image: '/gpu-purchased.png' },
+    { key:'value_compute', name:'Value Compute', tflops: 20, price: 250, note: 'Ideale per test', image: '/gpu-purchased.png' },
+    { key:'compute_classic', name:'Compute Classic', tflops: 45, price: 480, note: 'Uso generico', image: '/gpu-purchased.png' },
+    { key:'performance', name:'Performance', tflops: 90, price: 900, note: 'Alte prestazioni', image: '/gpu-purchased.png' },
+    { key:'pro_ai', name:'Pro AI', tflops: 160, price: 1700, note: 'AI workloads', image: '/gpu-purchased.png' },
+    { key:'enterprise', name:'Enterprise', tflops: 320, price: 3200, note: 'Team e produzione', image: '/gpu-purchased.png' },
+    { key:'ultra_enterprise', name:'Ultra Enterprise', tflops: 640, price: 6000, note: 'Massima potenza', image: '/gpu-purchased.png' }
+  ];
+
+  // safe append for overlays (keeps them inside page wrapper when possible)
+  function appendOverlay(container, overlay){
+    try {
+      if (container && container.appendChild) container.appendChild(overlay);
+      else document.body.appendChild(overlay);
+    } catch(e){
+      try { document.body.appendChild(overlay); } catch(e){}
+    }
+  }
+
+  // keyboard utility to close modals on ESC
+  function attachEscToClose(overlay, cleanup){
+    function handler(e){ if (e.key === 'Escape') cleanup(); }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }
+
+  // Expose hardwarePage used by app.js
   window.hardwarePage = function(){
-    // small plan catalog (kept in sync with previous app.js content)
-    const plans = [
-      { key:'value_compute', name:'Value Compute', tflops: 20, price: 250, note: 'Ideale per test' },
-      { key:'compute_classic', name:'Compute Classic', tflops: 45, price: 480, note: 'Uso generico' },
-      { key:'performance', name:'Performance', tflops: 90, price: 900, note: 'Alte prestazioni' },
-      { key:'pro_ai', name:'Pro AI', tflops: 160, price: 1700, note: 'AI workloads' },
-      { key:'enterprise', name:'Enterprise', tflops: 320, price: 3200, note: 'Team e produzione' },
-      { key:'ultra_enterprise', name:'Ultra Enterprise', tflops: 640, price: 6000, note: 'Massima potenza' },
-    ];
+    const page = node('div', { cls: 'page-content', attrs: { role: 'region', 'aria-label': 'Hardware catalog' } });
 
-    const el = (tag, content)=>{
-      const d = document.createElement('div');
-      d.className = tag;
-      if (typeof content === 'string') d.textContent = content;
-      else if (content instanceof HTMLElement) d.appendChild(content);
-      else if (Array.isArray(content)) content.forEach(c=> d.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
-      return d;
-    };
-
-    const page = document.createElement('div'); page.className='page-content';
-    const hero = document.createElement('div'); hero.className='hardware-hero';
-    hero.appendChild(el('div',[ el('div.h-title','Catalogo GPU'), el('div.small','Scegli un piano — rendimento 1.10% giornaliero per GPU attiva') ]));
-    const heroActions = document.createElement('div');
-    const helpBtn = document.createElement('button'); helpBtn.className='btn'; helpBtn.textContent='Guida';
-    helpBtn.onclick = ()=>alert('Seleziona un piano e usa il tuo saldo spendibile per acquistare. Le GPU sono non restituibili.');
-    heroActions.appendChild(helpBtn);
-    hero.appendChild(heroActions);
+    // Hero
+    const hero = node('div', { cls: 'hardware-hero' });
+    const titleWrap = node('div');
+    titleWrap.appendChild(node('div', { cls:'h-title', text: 'Hardware' }));
+    titleWrap.appendChild(node('div', { cls:'small', text: 'Scegli la potenza giusta per il tuo workload' }));
+    hero.appendChild(titleWrap);
     page.appendChild(hero);
 
-    const controls = document.createElement('div'); controls.className = 'hardware-controls';
-    const searchWrap = document.createElement('div'); searchWrap.className = 'hw-search';
-    const searchInput = document.createElement('input'); searchInput.placeholder = 'Cerca per nome o TFLOPS...';
+    // Controls
+    const controls = node('div', { cls: 'hardware-controls' });
+    const searchWrap = node('div', { cls: 'hw-search' });
+    const searchInput = document.createElement('input');
     searchInput.type = 'search';
+    searchInput.placeholder = 'Cerca tier, TFLOPS o prezzo';
+    searchInput.className = 'input';
+    searchInput.setAttribute('aria-label', 'Cerca hardware');
     searchWrap.appendChild(searchInput);
-    const select = document.createElement('select'); select.className = 'hw-select';
-    select.innerHTML = '<option value="recommended">Raccomandato</option><option value="price_asc">Prezzo ↑</option><option value="price_desc">Prezzo ↓</option><option value="tflops_desc">TFLOPS ↓</option>';
-    controls.appendChild(searchWrap); controls.appendChild(select);
+
+    const sortSelect = document.createElement('select'); sortSelect.className = 'hw-select';
+    sortSelect.innerHTML = '<option value="recommended">Raccomandato</option><option value="tflops_desc">TFLOPS ↓</option><option value="price_asc">Prezzo ↑</option><option value="price_desc">Prezzo ↓</option>';
+    controls.appendChild(searchWrap);
+    controls.appendChild(sortSelect);
     page.appendChild(controls);
 
-    const grid = document.createElement('div'); grid.className = 'hardware-grid';
+    // Grid (improved responsive columns)
+    const grid = node('div', { cls: 'hardware-grid', attrs: { role: 'list' } });
+    // tweak CSS via inline styles to guarantee column counts without editing CSS files
+    grid.style.gridTemplateColumns = 'repeat(1, 1fr)';
+    // responsive adjustments
+    const applyGridCols = () => {
+      try {
+        if (window.innerWidth >= 1100) grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        else if (window.innerWidth >= 720) grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+        else grid.style.gridTemplateColumns = 'repeat(1, 1fr)';
+      } catch(e){}
+    };
+    applyGridCols();
+    window.addEventListener && window.addEventListener('resize', applyGridCols);
 
     function openFullscreen(plan){
-      const overlay = document.createElement('div'); overlay.className = 'hw-overlay';
-      const fs = document.createElement('div'); fs.className = 'hw-fullscreen card';
-      const header = document.createElement('div'); header.className = 'fs-header';
-      const leftBlock = document.createElement('div'); leftBlock.style.display='flex'; leftBlock.style.gap='12px'; leftBlock.style.alignItems='center';
-      const chip = document.createElement('div'); chip.className='fs-chip'; chip.textContent = `${plan.tflops}T`;
-      const info = document.createElement('div');
-      info.appendChild(el('div.h-title', plan.name));
-      info.appendChild(el('div.small', `${plan.note} · ${plan.tflops} TFLOPS`));
-      leftBlock.appendChild(chip); leftBlock.appendChild(info);
-      header.appendChild(leftBlock);
-      const closeBtn = document.createElement('button'); closeBtn.className='btn'; closeBtn.textContent='Chiudi';
-      closeBtn.onclick = ()=>document.body.removeChild(overlay);
-      header.appendChild(closeBtn);
-      fs.appendChild(header);
+      const overlay = node('div', { cls: 'hw-overlay', attrs:{ tabindex: -1 } });
+      overlay.style.zIndex = 120;
+      const modal = node('div', { cls: 'hw-fullscreen card', attrs:{ role:'dialog', 'aria-label': plan.name, tabindex: 0 }});
+      modal.style.maxWidth = '980px';
+      const header = node('div', { cls:'fs-header' });
+      header.appendChild(node('div', { cls:'h-title', text: plan.name }));
+      const close = node('button', { cls:'btn', text: 'Chiudi' });
+      close.onclick = ()=> { try { overlay.remove(); } catch(e){} };
+      header.appendChild(close);
+      modal.appendChild(header);
 
-      const body = document.createElement('div'); body.style.marginTop='12px';
-      const priceRow = document.createElement('div'); priceRow.style.display='flex'; priceRow.style.justifyContent='space-between'; priceRow.style.alignItems='center';
-      priceRow.appendChild(el('div',[el('div.small','Prezzo'), el('div.h-title', formatMoney(plan.price))]));
+      const banner = node('div', { cls:'hw-banner' });
+      banner.style.height = '280px';
+      banner.style.display = 'flex';
+      banner.style.alignItems = 'center';
+      banner.style.justifyContent = 'center';
+      banner.style.backgroundColor = 'transparent';
+
+      // optimize image handling: lazy, role img, descriptive alt
+      const img = document.createElement('img');
+      img.src = plan.image || '/Screenshot_20260314_212313_Chrome.jpg';
+      img.alt = `${plan.name} — ${plan.note}`;
+      img.loading = 'lazy';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      banner.appendChild(img);
+      modal.appendChild(banner);
+
+      const body = node('div'); body.style.marginTop='12px';
+      const specs = node('div');
+      specs.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px"><div class="small">TFLOPS</div><div class="h-title">${plan.tflops} TFLOPS</div></div>
+        <div style="flex:1;min-width:160px"><div class="small">Prezzo</div><div class="h-title">${formatMoney(plan.price)}</div></div>
+        <div style="flex:1;min-width:160px"><div class="small">Tipo</div><div class="h-title">${plan.note}</div></div>
+      </div>`;
+      body.appendChild(specs);
+
       const estDaily = +(plan.price * 0.011).toFixed(2);
-      priceRow.appendChild(el('div',[el('div.small','Guadagno giornaliero stimato'), el('div.h-title', formatMoney(estDaily))]));
-      body.appendChild(priceRow);
+      body.appendChild(node('div', { cls:'small', text: `Stima giornaliera: ${formatMoney(estDaily)} · Stima mensile: ${formatMoney((estDaily*30).toFixed(2))}` }));
 
-      const desc = document.createElement('div'); desc.className='help'; desc.style.marginTop='10px';
-      desc.textContent = `Dettagli: ${plan.name} — ${plan.note}. TFLOPS: ${plan.tflops}. Le GPU sono permanenti e non restituibili.`;
-      body.appendChild(desc);
+      // feature list for quick scanning
+      const features = node('ul'); features.style.marginTop = '12px'; features.style.marginBottom = '6px';
+      ['24/7 uptime', 'Supporto base', `${plan.tflops} TFLOPS garantiti`, 'Pagamento una-tantum'].forEach(f=>{
+        const li = document.createElement('li'); li.className='small'; li.textContent = f; features.appendChild(li);
+      });
+      body.appendChild(features);
 
-      const modalActions = document.createElement('div'); modalActions.style.display='flex'; modalActions.style.gap='8px'; modalActions.style.marginTop='14px';
-      const buyBtn = document.createElement('button'); buyBtn.className='primary'; buyBtn.textContent='Acquista';
+      const actions = node('div'); actions.style.display='flex'; actions.style.gap='10px'; actions.style.marginTop='14px';
+      actions.style.flexWrap = 'wrap';
+      const buy = node('button', { cls:'primary', text:'Acquista' });
+      buy.onclick = async ()=>{
+        const session = (window.getSession && window.getSession()) || (window.__cup9_session);
+        if (!session) { (window.navigate && window.navigate('login')); return; }
+        if (!confirm(`Confermi l'acquisto di ${plan.name} per ${formatMoney(plan.price)}?`)) return;
+
+        try {
+          // Compute spendable: sum of confirmed/accredited deposits minus confirmed purchases (never allow negative)
+          const allTx = (window.txCol && window.txCol.getList ? window.txCol.getList() : []);
+          const deposits = allTx.filter(t => t.type === 'deposit' && (String(t.status).toLowerCase() === 'confirmed' || String(t.status).toLowerCase() === 'accredited' || t.credited === true));
+          const purchases = allTx.filter(t => t.type === 'purchase' && (String(t.status).toLowerCase() === 'confirmed' || String(t.status).toLowerCase() === 'accredited'));
+          const totalDeposits = deposits.reduce((s,t)=>s + (Number(t.amount)||0),0);
+          const totalPurchases = purchases.reduce((s,t)=>s + (Number(t.amount)||0),0);
+          const spendable = Math.max(0, totalDeposits - totalPurchases);
+
+          if (Number(spendable) < Number(plan.price)) {
+            return alert(`Saldo depositi insufficiente. Saldo disponibile: ${formatMoney(spendable)} — prezzo: ${formatMoney(plan.price)}`);
+          }
+
+          // create a confirmed purchase transaction so balances remain consistent and no negative balances occur
+          let purchaseRec = null;
+          if (window.txCol) {
+            purchaseRec = await window.txCol.create({
+              user_id: session.id,
+              type: 'purchase',
+              amount: plan.price,
+              status: 'confirmed',
+              created_at: new Date().toISOString(),
+              note: `Acquisto ${plan.name}`
+            });
+          }
+
+          // create device only after purchase transaction recorded
+          if (window.deviceCol) {
+            await window.deviceCol.create({
+              owner_id: session.id,
+              name: plan.name,
+              plan_key: plan.key,
+              price: plan.price,
+              tflops: plan.tflops,
+              active: true,
+              purchased: true,
+              non_returnable: true,
+              daily_yield: +(plan.price * 0.011),
+              created_at: new Date().toISOString(),
+              last_accrual: new Date().toISOString(),
+              purchase_tx_id: purchaseRec && purchaseRec.id
+            });
+          }
+
+          alert('Acquisto completato.');
+        } catch(e){
+          console.warn('buy failed', e);
+          alert('Acquisto fallito');
+        } finally {
+          try { if (typeof window.__cup9gpu_forcePersist === 'function') window.__cup9gpu_forcePersist(); } catch(e){}
+          overlay.remove();
+          (window.render && window.render());
+        }
+      };
+      const share = node('button', { cls:'btn', text:'Condividi link' });
+      share.onclick = async ()=>{
+        try {
+          const base = (typeof window.baseUrl === 'string' && window.baseUrl) ? window.baseUrl : (window.location.origin + window.location.pathname);
+          const link = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(plan.key)}`;
+          await navigator.clipboard.writeText(link);
+          alert('Link copiato: ' + link);
+        } catch(e){ alert('Condivisione non disponibile'); }
+      };
+      const details = node('button', { cls:'btn', text:'Dettagli tecnici' });
+      details.onclick = ()=> alert(`${plan.name}\n${plan.note}\nTFLOPS: ${plan.tflops}\nPrezzo: ${formatMoney(plan.price)}\nCaratteristiche: 24/7 uptime, supporto base`);
+
+      actions.appendChild(buy); actions.appendChild(share); actions.appendChild(details);
+      body.appendChild(actions);
+
+      modal.appendChild(body);
+      overlay.appendChild(modal);
+      appendOverlay(page, overlay);
+
+      // focus management and ESC close
+      const detach = attachEscToClose(overlay, ()=> { overlay.remove(); detach(); });
+      modal.focus && modal.focus();
+    }
+
+    // card builder with improved structure and accessibility
+    function buildCard(p){
+      const card = node('article', { cls: 'hw-card condensed', attrs:{ role:'listitem', tabindex: 0 } });
+      card.style.display = 'flex';
+      card.style.flexDirection = 'column';
+      card.style.gap = '8px';
+      card.style.overflow = 'hidden';
+
+      // image container (keeps aspect and lazy-loading)
+      const imgWrap = node('div', { cls: 'hw-banner' });
+      imgWrap.style.height = '180px';
+      imgWrap.style.display = 'flex';
+      imgWrap.style.alignItems = 'center';
+      imgWrap.style.justifyContent = 'center';
+      imgWrap.style.backgroundColor = 'transparent';
+      imgWrap.style.overflow = 'hidden';
+
+      const img = document.createElement('img');
+      img.src = p.image || '/Screenshot_20260314_212313_Chrome.jpg';
+      img.alt = `${p.name} — ${p.note}`;
+      img.loading = 'lazy';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      imgWrap.appendChild(img);
+      card.appendChild(imgWrap);
+
+      // content area
+      const body = node('div', { cls: 'hw-body' });
+      body.style.display = 'flex';
+      body.style.flexDirection = 'column';
+      body.style.gap = '8px';
+      body.style.padding = '10px';
+
+      const top = node('div');
+      top.style.display = 'flex';
+      top.style.justifyContent = 'space-between';
+      top.style.alignItems = 'center';
+      top.style.gap = '8px';
+
+      const left = node('div');
+      left.appendChild(node('div', { cls:'name', text: p.name }));
+      left.appendChild(node('div', { cls:'sub', text: p.note }));
+
+      const right = node('div');
+      right.style.textAlign = 'right';
+      right.appendChild(node('div', { cls:'price-badge', text: formatMoney(p.price) }));
+      right.appendChild(node('div', { cls:'hw-stats', text: `${p.tflops} TFLOPS` }));
+
+      top.appendChild(left);
+      top.appendChild(right);
+      body.appendChild(top);
+
+      // footer: compact spec badges
+      const footer = node('div');
+      footer.style.display = 'flex';
+      footer.style.justifyContent = 'space-between';
+      footer.style.alignItems = 'center';
+      footer.style.gap = '8px';
+
+      const specList = node('div');
+      specList.style.display='flex';
+      specList.style.gap='6px';
+      specList.style.flexWrap='wrap';
+      const estDaily = +(p.price * 0.011).toFixed(2);
+      const specs = [
+        `${p.tflops} TFLOPS`,
+        `+${formatMoney(estDaily)}/giorno`,
+        p.non_returnable ? 'Permanente' : 'Standard'
+      ];
+      specs.forEach(s => {
+        const sp = node('div', { cls: 'hw-chip', text: s });
+        sp.style.fontSize = '12px';
+        sp.style.padding = '8px';
+        sp.style.minWidth = 'auto';
+        specList.appendChild(sp);
+      });
+
+      const actions = node('div');
+      actions.style.display='flex';
+      actions.style.gap='8px';
+      actions.style.alignItems='center';
+
+      const detailsBtn = node('button', { cls:'btn', text:'Dettagli' });
+      detailsBtn.onclick = ()=> openFullscreen(p);
+      const buyBtn = node('button', { cls:'primary', text:'Acquista' });
       buyBtn.onclick = async ()=>{
         const session = (window.getSession && window.getSession()) || (window.__cup9_session);
         if (!session) { (window.navigate && window.navigate('login')); return; }
-        if (!confirm(`Acquistare ${plan.name} per ${formatMoney(plan.price)}?`)) return;
-        // create purchase + device + earning similarly to previous flow but in a minimal, robust way
-        try {
-          if (window.txCol) await window.txCol.create({ user_id: session.id, type: 'purchase', amount: plan.price, created_at: new Date().toISOString(), note: `Acquisto ${plan.name}` });
-          if (window.deviceCol) await window.deviceCol.create({ owner_id: session.id, name: plan.name, plan_key: plan.key, price: plan.price, tflops: plan.tflops, active: true, trial: false, purchased: true, non_returnable: true, daily_yield: +(plan.price * 0.011), created_at: new Date().toISOString(), last_accrual: new Date().toISOString() });
-          if (window.txCol) await window.txCol.create({ user_id: session.id, type: 'earning', amount: +(plan.price * 0.011), created_at: new Date().toISOString(), note: `Rendimento ${plan.name}` });
-        } catch(e){ console.warn('buy flow failed', e); }
-        alert('Acquisto completato.');
-        document.body.removeChild(overlay);
-        (window.render && window.render());
-      };
-      const cancelBtn = document.createElement('button'); cancelBtn.className='btn'; cancelBtn.textContent='Annulla';
-      cancelBtn.onclick = ()=>document.body.removeChild(overlay);
-      modalActions.appendChild(buyBtn); modalActions.appendChild(cancelBtn);
-      body.appendChild(modalActions);
+        if (!confirm(`Acquistare ${p.name} per ${formatMoney(p.price)}?`)) return;
 
-      fs.appendChild(body);
-      overlay.appendChild(fs);
-      document.body.appendChild(overlay);
+        // Prevent duplicate purchases: check for a recent identical purchase tx
+        try {
+          const recent = (window.txCol && window.txCol.getList ? window.txCol.getList() : []).find(t =>
+            String(t.user_id) === String(session.id) &&
+            String(t.type) === 'purchase' &&
+            String(t.note) === `Acquisto ${p.name}` &&
+            (Date.now() - new Date(t.created_at).getTime()) < 60000
+          );
+          if (recent) return alert('Un acquisto simile è già in corso o è stato recentemente registrato, attendi qualche secondo.');
+        } catch(e){ /* best-effort */ }
+
+        // disable to avoid double-click race
+        buyBtn.disabled = true;
+        try {
+          // compute spendable balance from confirmed/accredited deposits minus confirmed purchases
+          const allTx = (window.txCol && window.txCol.getList ? window.txCol.getList() : []);
+          const deposits = allTx.filter(t => t.type === 'deposit' && (String(t.status).toLowerCase() === 'confirmed' || String(t.status).toLowerCase() === 'accredited' || t.credited === true));
+          const purchases = allTx.filter(t => t.type === 'purchase' && (String(t.status).toLowerCase() === 'confirmed' || String(t.status).toLowerCase() === 'accredited'));
+          const totalDeposits = deposits.reduce((s,t)=>s + (Number(t.amount)||0),0);
+          const totalPurchases = purchases.reduce((s,t)=>s + (Number(t.amount)||0),0);
+          const spendable = Math.max(0, totalDeposits - totalPurchases);
+
+          if (Number(spendable) < Number(p.price)) {
+            return alert(`Saldo depositi insufficiente. Saldo disponibile: ${formatMoney(spendable)} — prezzo: ${formatMoney(p.price)}`);
+          }
+
+          // record confirmed purchase tx
+          let purchaseRec = null;
+          if (window.txCol) {
+            purchaseRec = await window.txCol.create({
+              user_id: session.id,
+              type: 'purchase',
+              amount: p.price,
+              status: 'confirmed',
+              created_at: new Date().toISOString(),
+              note: `Acquisto ${p.name}`
+            });
+          }
+
+          if (window.deviceCol) {
+            await window.deviceCol.create({
+              owner_id: session.id,
+              name: p.name,
+              plan_key: p.key,
+              price: p.price,
+              tflops: p.tflops,
+              active: true,
+              purchased: true,
+              non_returnable: true,
+              daily_yield: +(p.price * 0.011),
+              created_at: new Date().toISOString(),
+              last_accrual: new Date().toISOString(),
+              purchase_tx_id: purchaseRec && purchaseRec.id
+            });
+          }
+
+          alert('Acquisto completato.');
+        } catch(e){
+          console.warn('buy failed', e);
+          alert('Acquisto fallito');
+        } finally {
+          try { if (typeof window.__cup9gpu_forcePersist === 'function') window.__cup9gpu_forcePersist(); } catch(e){}
+          buyBtn.disabled = false;
+          (window.render && window.render());
+        }
+      };
+
+      actions.appendChild(detailsBtn);
+      actions.appendChild(buyBtn);
+
+      footer.appendChild(specList);
+      footer.appendChild(actions);
+
+      body.appendChild(footer);
+      card.appendChild(body);
+
+      // keyboard enter/space to open details
+      card.addEventListener('keydown', (ev)=> {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openFullscreen(p); }
+      });
+
+      // small hover affordance for pointer users
+      card.addEventListener('mouseover', ()=> { card.style.transform = 'translateY(-6px)'; card.style.transition = 'transform .16s ease'; });
+      card.addEventListener('mouseout', ()=> { card.style.transform = ''; });
+
+      return card;
     }
 
     function renderGrid(){
       grid.innerHTML = '';
       const q = (searchInput.value || '').trim().toLowerCase();
       let visible = plans.slice();
-
-      if (q) {
-        visible = visible.filter(p => (p.name + ' ' + p.note + ' ' + p.tflops).toLowerCase().includes(q));
-      }
-      const mode = select.value;
-      if (mode === 'price_asc') visible.sort((a,b)=>a.price-b.price);
+      if (q) visible = visible.filter(p => (p.name + ' ' + p.note + ' ' + p.tflops + ' ' + p.price).toLowerCase().includes(q));
+      const mode = sortSelect.value;
+      if (mode === 'tflops_desc') visible.sort((a,b)=>b.tflops-a.tflops);
+      else if (mode === 'price_asc') visible.sort((a,b)=>a.price-b.price);
       else if (mode === 'price_desc') visible.sort((a,b)=>b.price-a.price);
-      else if (mode === 'tflops_desc') visible.sort((a,b)=>b.tflops-a.tflops);
 
-      visible.forEach(p=>{
-        const card = document.createElement('div'); card.className = 'hw-card';
-        const left = document.createElement('div'); left.className = 'hw-left';
-        const chip = document.createElement('div'); chip.className = 'hw-chip'; chip.textContent = `${p.tflops}T`;
-        const meta = document.createElement('div'); meta.className = 'hw-meta';
-        meta.appendChild(el('div.name', p.name));
-        meta.appendChild(el('div.sub', `${p.note} · ${p.tflops} TFLOPS`));
-        left.appendChild(chip); left.appendChild(meta);
-
-        const right = document.createElement('div'); right.className = 'hw-right';
-        const price = document.createElement('div'); price.className = 'price-badge'; price.textContent = formatMoney(p.price);
-        const estDaily = +(p.price * 0.011).toFixed(2);
-        const estMonthly = +(estDaily * 30).toFixed(2);
-        right.appendChild(price);
-        const stats = document.createElement('div'); stats.className = 'hw-stats';
-        stats.textContent = `Stima: ${formatMoney(estDaily)} / giorno · ${formatMoney(estMonthly)} / mese`;
-        right.appendChild(stats);
-
-        const actions = document.createElement('div'); actions.className = 'hw-actions';
-        const btnDetails = document.createElement('button'); btnDetails.className = 'btn'; btnDetails.textContent = 'Dettagli';
-        btnDetails.onclick = ()=>openFullscreen(p);
-        const btnBuy = document.createElement('button'); btnBuy.className = 'primary'; btnBuy.textContent = 'Acquista';
-        btnBuy.onclick = async ()=>{
-          const session = (window.getSession && window.getSession()) || (window.__cup9_session);
-          if (!session) { (window.navigate && window.navigate('login')); return; }
-          if (!confirm(`Acquistare ${p.name} per ${formatMoney(p.price)}?`)) return;
-          try {
-            if (window.txCol) await window.txCol.create({ user_id: session.id, type: 'purchase', amount: p.price, created_at: new Date().toISOString(), note: `Acquisto ${p.name}` });
-            if (window.deviceCol) await window.deviceCol.create({ owner_id: session.id, name: p.name, plan_key: p.key, price: p.price, tflops: p.tflops, active: true, trial: false, purchased: true, non_returnable: true, daily_yield: +(p.price * 0.011), created_at: new Date().toISOString(), last_accrual: new Date().toISOString() });
-            if (window.txCol) await window.txCol.create({ user_id: session.id, type: 'earning', amount: +(p.price * 0.011), created_at: new Date().toISOString(), note: `Rendimento ${p.name}` });
-          } catch(e){ console.warn('buy flow failed', e); }
-          alert('Acquisto completato: la GPU è attiva. Il costo è stato addebitato dal saldo spendibile.');
-          (window.render && window.render());
-        };
-
-        actions.appendChild(btnDetails);
-        actions.appendChild(btnBuy);
-        right.appendChild(actions);
-
-        chip.onclick = ()=>openFullscreen(p);
-
-        card.appendChild(left);
-        card.appendChild(right);
-        grid.appendChild(card);
-      });
+      visible.forEach(p => grid.appendChild(buildCard(p)));
 
       if (visible.length === 0) {
-        const empty = document.createElement('div'); empty.className = 'empty-state';
-        empty.textContent = 'Nessun piano corrisponde alla ricerca';
-        grid.appendChild(empty);
+        grid.appendChild(node('div', { cls:'empty-state', text:'Nessun piano corrisponde alla ricerca' }));
       }
     }
 
-    searchInput.addEventListener('input', ()=>renderGrid());
-    select.addEventListener('change', ()=>renderGrid());
+    searchInput.addEventListener('input', ()=> renderGrid());
+    sortSelect.addEventListener('change', ()=> renderGrid());
 
     page.appendChild(grid);
     renderGrid();
-    page.appendChild(el('div.small','Le GPU acquistate appariranno in "My Devices". Le risorse sono permanenti e non restituibili.'));
+
+    page.appendChild(node('div', { cls:'small-note', text:'Le GPU acquistate appariranno in "I miei dispositivi". Le risorse sono permanenti e non restituibili.' }));
     return page;
   };
 
-  // myDevicesPage implementation (extracted)
+  // myDevicesPage: lists devices owned by current session (unchanged behavior but better accessible)
   window.myDevicesPage = async function(){
-    const wrap = document.createElement('div'); wrap.className='card';
-    wrap.appendChild((function(){ const d=document.createElement('h3'); d.textContent='I miei dispositivi'; return d; })());
+    const wrap = node('div', { cls:'card' });
+    wrap.appendChild(node('h3', { text:'I miei dispositivi' }));
     const session = (window.getSession && window.getSession()) || (window.__cup9_session);
-    const devList = (window.deviceCol && window.deviceCol.getList ? window.deviceCol.getList().filter(d=>d.owner_id===session.id) : []);
-    const l = document.createElement('div'); l.className='list';
-    if (devList.length===0) l.appendChild((function(){ const d=document.createElement('div'); d.className='small'; d.textContent='Nessun dispositivo attivo'; return d; })());
-    devList.forEach(d=>{
-      const r = document.createElement('div'); r.className='tx';
-      const statusLabel = d.trial ? 'Trial' : (d.non_returnable ? 'Permanente' : 'Attivo');
-      r.appendChild((function(){ const c=document.createElement('div'); c.appendChild((function(){ const t=document.createElement('div'); t.textContent=d.name; return t; })()); c.appendChild((function(){ const m=document.createElement('div'); m.className='meta'; m.textContent=statusLabel; return m; })()); return c; })());
-      const right = document.createElement('div');
-      right.appendChild((function(){ const v=document.createElement('div'); v.textContent= d.daily_yield ? formatMoney(d.daily_yield) : '-'; return v; })());
+    const devList = (window.deviceCol && window.deviceCol.getList ? window.deviceCol.getList().filter(d=>String(d.owner_id)===String(session && session.id)) : []);
+    const listWrap = node('div', { cls:'list', attrs:{ role:'list' } });
 
-      const badge = document.createElement('div'); badge.className='small'; badge.textContent='Hardware permanente (non restituibile)';
-      badge.style.fontWeight = '700';
-      badge.style.color = 'var(--muted)';
-      right.appendChild(badge);
+    if (!devList || devList.length === 0) {
+      listWrap.appendChild(node('div', { cls:'small', text:'Nessun dispositivo attivo' }));
+    } else {
+      devList.forEach(d => {
+        const row = node('div', { cls:'tx', attrs:{ role:'listitem' } });
+        const left = node('div');
+        left.appendChild(node('div', { text: d.name || 'Dispositivo' }));
+        const meta = node('div', { cls:'meta', text: d.trial ? 'Trial' : (d.non_returnable ? 'Permanente' : (d.active ? 'Attivo' : 'Disattivato')) });
+        meta.style.fontSize = '13px'; meta.style.color = 'var(--muted)';
+        left.appendChild(meta);
 
-      r.appendChild(right);
-      l.appendChild(r);
-    });
-    wrap.appendChild(l);
+        const right = node('div'); right.style.textAlign = 'right';
+        right.appendChild(node('div', { cls:'tx-amount', text: d.daily_yield ? formatMoney(d.daily_yield) : '-' }));
+        const badge = node('div', { cls:'small', text: d.non_returnable ? 'Hardware permanente (non restituibile)' : (d.trial ? 'Trial' : 'Standard') });
+        badge.style.color = 'var(--muted)'; badge.style.fontWeight = 700; right.appendChild(badge);
+
+        row.appendChild(left); row.appendChild(right);
+        listWrap.appendChild(row);
+      });
+    }
+
+    wrap.appendChild(listWrap);
     return wrap;
   };
+
 })();

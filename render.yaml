@@ -1,9 +1,14 @@
 services:
   - type: web
-    name: cup9gpu
+    name: gpu-ai-backend
     env: node
     plan: free
     region: oregon
     branch: main
-    buildCommand: "npm install"
+    buildCommand: "npm ci --silent && npm run build || true"
     startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8000"

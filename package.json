@@ -2,10 +2,10 @@
   "name": "cup9gpu-backend",
   "version": "1.0.0",
   "description": "CUP9GPU minimal Node backend for Render",
-  "main": "server.js",
+  "main": "backend/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node backend/index.js",
+    "dev": "node backend/index.js"
   },
   "keywords": [],
   "author": "",

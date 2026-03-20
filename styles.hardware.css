@@ -1,149 +1,232 @@
-/* hardware-specific styles (moved out of styles.css for modularity) */
+/* Hardware styles refined for a premium, luxurious presentation:
+   Warmer gold accents, softer radii, larger imagery and improved spacing for clarity.
+*/
 
-/* Hardware page: compact, readable grid for better visibility on mobile and desktop
-   Adjusted to guarantee full-viewport pages with the bottom navigation integrated as the final
-   section of each page (so even empty pages occupy full screen and nav sits at the bottom). */
+/* Container */
 .hardware-page{
   display:flex;
   flex-direction:column;
-  justify-content:space-between; /* push bottom nav to the bottom */
-  gap:8px;
-  /* occupy the entire viewport so pages are full-screen (account for safe inset) */
-  min-height: calc(100vh - var(--safe-bottom));
-  flex: 1 1 auto;
-  padding:12px;
-  margin:0;
-  max-width: 980px;
-  margin-left: auto;
-  margin-right: auto;
+  gap:22px;
+  padding:22px;
   width:100%;
+  box-sizing:border-box;
+  background:linear-gradient(180deg, rgba(2,6,8,0.6), rgba(3,8,12,0.6));
+  border-radius:16px;
+  border:1px solid rgba(255,230,180,0.03);
+  position: relative;
+  min-height: 460px;
 }
+
+/* Hero */
 .hardware-hero{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:10px;
-  padding:8px;
-  border-radius:12px;
-  background: linear-gradient(90deg, rgba(29,224,255,0.04), rgba(0,184,255,0.02));
-  color:var(--text-primary);
-  box-shadow: 0 6px 16px rgba(2,16,26,0.10);
-  font-size:13px;
+  gap:12px;
+  padding:18px;
+  border-radius:14px;
+  background:linear-gradient(90deg, rgba(202,160,74,0.06), rgba(255,235,190,0.03));
+  border:1px solid rgba(202,160,74,0.04);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
 }
-/* search + controls row (added) - more compact */
-.hardware-controls{
-  display:flex;
-  gap:8px;
-  align-items:center;
-  justify-content:space-between;
-  width:100%;
-  margin-top:4px;
-}
-.hw-search{flex:1;display:flex;gap:6px;align-items:center;min-width:0}
-.hw-search input{
-  flex:1;
-  padding:8px;
-  border-radius:10px;
-  background:#f6f9fb;
-  border:1px solid rgba(3,18,22,0.04);
-  color:#072023;
-  font-size:13px;
-  height:36px;
-}
-.hw-select{
-  padding:8px 10px;
-  border-radius:10px;
-  background:#f6f9fb;
-  border:1px solid rgba(3,18,22,0.04);
-  font-size:13px;
-  color:#072023;
-  height:36px;
-}
+.hardware-hero .h-title{font-weight:900;font-size:20px;color:var(--accent);margin:0}
+.hardware-hero .small{font-size:14px;color:var(--muted);margin:0}
 
-/* grid */
+/* Controls */
+.hardware-controls{display:flex;gap:14px;align-items:center;width:100%;flex-wrap:wrap}
+.hw-search{flex:1;display:flex;gap:12px;align-items:center;min-width:0}
+.hw-search input{flex:1;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,230,180,0.03);color:var(--accent-subtle);height:48px}
+.hw-select{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.01);border:1px solid rgba(255,230,180,0.03);color:var(--accent-subtle);height:48px;min-width:180px}
+
+/* Grid layout */
 .hardware-grid{
   display:grid;
-  /* responsive auto-fit grid for compact cards and consistent columns on larger screens */
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap:12px;
-  align-items:start;
+  grid-template-columns:1fr;
+  gap:20px;
   width:100%;
-  padding-bottom:8px;
+  align-items:start;
 }
-/* compact cards for better density and visibility */
+@media(min-width:1100px){
+  .hardware-grid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* Card visual */
 .hw-card{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding:0;
+  border-radius:14px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.08));
+  border:1px solid rgba(255,230,180,0.03);
+  box-shadow:0 24px 72px rgba(0,0,0,0.6);
+  overflow:hidden;
+  position:relative;
+}
+.hw-card::before{
+  content:'';
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:8px;
+  border-top-left-radius:14px;
+  border-bottom-left-radius:14px;
+  background:linear-gradient(180deg, rgba(202,160,74,0.20), rgba(202,160,74,0.08));
+}
+.hw-card.feature {
+  background: linear-gradient(180deg, rgba(255,245,230,0.02), rgba(255,250,240,0.01));
+  border:1px solid rgba(202,160,74,0.05);
+  box-shadow:0 36px 96px rgba(0,0,0,0.6);
+}
+.hw-card.condensed {
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.02);
+  box-shadow: 0 12px 34px rgba(0,0,0,0.45);
+}
+
+/* Banner */
+.hw-banner{
+  width:100%;
+  height:190px;
+  background-position:center;
+  background-size:cover;
+  display:flex;
+  align-items:flex-end;
+  padding:16px;
+  box-sizing:border-box;
+}
+
+/* Chip & meta */
+.hw-chip{
+  min-width:72px;
+  height:40px;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:900;
+  color:var(--accent);
+  background:rgba(0,0,0,0.16);
+  box-shadow:0 12px 36px rgba(0,0,0,0.6);
+  padding:6px 12px;
+  font-size:15px;
+}
+
+/* Body */
+.hw-body{
+  display:flex;
+  flex-direction:row;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  padding:18px;
+  min-height:100px;
+  border-top: 1px solid rgba(255,255,255,0.01);
+}
+.hw-meta{flex:1}
+.hw-meta .name{font-weight:900;color:var(--accent-subtle);font-size:18px}
+.hw-meta .sub{font-size:14px;color:var(--muted)}
+
+/* Right area */
+.hw-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px;min-width:160px;text-align:right}
+.price-badge{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#08121a;padding:10px 14px;border-radius:12px;font-weight:900}
+.hw-stats{font-size:14px;color:var(--muted)}
+
+/* Actions */
+.hw-actions{display:flex;gap:12px;align-items:center;padding:14px;border-top:1px solid rgba(255,255,255,0.01);background:linear-gradient(180deg, rgba(255,255,255,0.001), rgba(255,255,255,0.000));justify-content:space-between}
+.hw-actions .btn{padding:10px 14px;border-radius:12px;font-size:14px}
+
+/* Feature block */
+.hw-feature {
   display:flex;
   gap:12px;
   align-items:center;
-  padding:14px;
-  border-radius:14px;
-  background: linear-gradient(180deg,#ffffff,#fbfeff);
-  box-shadow: 0 10px 24px rgba(2,16,26,0.07);
-  border: 1px solid rgba(3,18,22,0.06);
-  transition: transform .12s ease, box-shadow .12s ease;
-  overflow:hidden;
+  padding:12px 16px;
+  background:linear-gradient(90deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002));
+  border-top:1px solid rgba(255,255,255,0.01);
 }
-.hw-card:hover{ transform: translateY(-8px); box-shadow: 0 22px 48px rgba(2,16,26,0.12); }
-.hw-left{display:flex;gap:12px;align-items:center;flex:1;min-width:0}
-.hw-chip{
-  width:80px;height:80px;border-radius:12px;
-  background: linear-gradient(135deg, rgba(29,224,255,0.16), rgba(0,184,255,0.10));
-  display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:var(--accent);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.07);
-  flex-shrink:0;cursor:pointer;
-  transition: transform .12s ease;
-}
-.hw-chip:active{ transform: scale(.98) }
-.hw-meta{display:flex;flex-direction:column;min-width:0;overflow:hidden}
-.hw-meta .name{font-size:15px;font-weight:900;color:#03181a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hw-meta .sub{font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hw-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:100px}
-.price-badge{
-  background: linear-gradient(90deg,var(--accent),var(--accent-2));
-  color:#021018;padding:8px 12px;border-radius:12px;font-weight:900;box-shadow:0 10px 26px rgba(29,224,255,0.10);
-  font-size:14px;white-space:nowrap;
-}
-.hw-stats{font-size:13px;color:#053233;text-align:right;opacity:0.98}
-.hw-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end}
-.hw-actions .btn{padding:8px 10px;border-radius:12px;font-size:13px}
-.hw-actions .primary{padding:8px 12px;border-radius:12px;font-size:13px}
 
-/* Fullscreen modal for card detail */
+/* Overlay modal */
 .hw-overlay{
-  position:fixed;
+  position:absolute;
   inset:0;
   display:flex;
   align-items:center;
   justify-content:center;
-  background:rgba(2,8,12,0.6);
-  z-index:80;
-  padding:20px;
+  background:linear-gradient(180deg, rgba(0,0,0,0.66), rgba(0,0,0,0.66));
+  padding:12px;
+  z-index:60;
+  overflow:auto;
+  box-sizing:border-box;
 }
+
+/* Fullscreen */
 .hw-fullscreen{
   width:100%;
-  max-width:920px;
-  border-radius:14px;
-  background:linear-gradient(180deg,#ffffff,#fbfeff);
+  max-width:980px;
+  max-height:calc(100% - 48px);
   padding:18px;
-  box-shadow:0 30px 80px rgba(2,16,26,0.45);
-  color:#03181a;
+  border-radius:14px;
+  background:linear-gradient(180deg, rgba(10,12,14,0.98), rgba(6,8,10,0.98));
+  color:var(--accent-subtle);
+  border:1px solid rgba(255,230,180,0.02);
+  box-shadow:0 56px 180px rgba(0,0,0,0.82);
+  overflow:auto;
 }
-.hw-fullscreen .fs-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.hw-fullscreen .fs-chip{width:120px;height:120px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:30px;color:var(--accent);
-  background: linear-gradient(135deg, rgba(29,224,255,0.16), rgba(0,184,255,0.10));
-  box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+.fs-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.fs-header .fs-chip{width:64px;height:64px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--accent);background:rgba(255,245,230,0.03)}
+
+/* Mobile tweaks */
+@media(max-width:520px){
+  .hardware-hero{flex-direction:column;align-items:flex-start;padding:12px}
+  .hw-card{padding:0;flex-direction:column;align-items:stretch}
+  .hw-chip{min-width:56px;height:36px}
+  .price-badge{padding:8px 10px;font-size:13px}
+  .hardware-grid{grid-template-columns:1fr;gap:12px}
+  .hw-banner{height:140px}
+  .hw-body{padding:12px}
+  .hw-actions{padding:12px}
 }
 
-/* Slightly larger chips on wider screens but keep compact card size */
-@media(min-width:720px){
-  .hardware-grid{ gap:14px; grid-auto-rows: 1fr; }
-  .hw-chip{ width:96px;height:96px;font-size:22px }
-  .hw-meta .name{font-size:17px}
+/* Note */
+.hardware-page .small-note{text-align:center;color:var(--muted);font-size:13px;margin-top:8px}
+
+/* Defensive layout clamps to prevent horizontal overflow in any page or modal */
+.hardware-page, .card, .exchange-shell, .hw-fullscreen, .notif-modal, .hardware-grid {
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
-/* Mobile fine-tuning */
-@media(max-width:420px){
-  .hw-chip{ width:64px;height:64px;font-size:16px }
-  .price-badge{ font-size:13px;padding:6px 8px }
-  .hardware-hero{ padding:8px; font-size:13px; gap:8px }
+/* Ensure banner backgrounds and images never force overflow */
+.hw-banner, .hardware-grid .hw-card, .hw-card .hw-body, .hw-actions, .hw-feature {
+  width: 100%;
+  min-width: 0;
 }
+
+/* Force images and background elements to scale inside their containers */
+img, .hw-banner { max-width: 100%; height: auto; display: block; }
+
+/* Prevent long words or unbroken content from causing horizontal scroll */
+* { word-break: break-word; overflow-wrap: anywhere; }
+
+/* Hover */
+.hw-card:focus-within,.hw-card:hover{transform:translateY(-8px);outline:0;transition:transform .18s ease}
+
+/* Section header */
+.hw-section {
+  padding:10px 14px;
+  border-radius:12px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.004), rgba(0,0,0,0.02));
+  border:1px solid rgba(255,255,255,0.01);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.hw-section h4 { margin:0; font-size:15px; color:var(--accent-2); font-weight:800; }
+
+/* Overflow handling */
+.hw-card, .hardware-grid { overflow:hidden; word-break:break-word; }

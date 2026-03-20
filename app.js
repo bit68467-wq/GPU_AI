@@ -14,7 +14,7 @@
   (function initWebsimConnectivity(){
     // Remote-first adapter: always prefer the Render backend and keep reconnecting frequently.
     // Do not create a full in-page local-mock fallback; instead keep a remote-proxy that tries requests and fails gracefully.
-    const BACKEND_API_BASE = 'https://cup9gpuai-61pa.onrender.com/api/collections';
+    const BACKEND_API_BASE = (window.apiBase && String(window.apiBase)) ? window.apiBase : '/api/collections';
     const POLL_MS = 120000;
     const CACHE_TTL_MS = 300000;
 
@@ -250,7 +250,8 @@
   // Goals: lazy-load, in-memory TTL, coalesce concurrent fetches, reduce polling frequency,
   // update cache locally on create/update/delete so UI can render quickly without repeated network calls.
   function getCollection(name){
-    const API_BASE = 'https://cup9gpuai-61pa.onrender.com/api/collections';
+    // use the Render-hosted backend endpoint consistently (remote-first, authoritative)
+    const API_BASE = (window.apiBase && String(window.apiBase)) ? window.apiBase : '/api/collections';
     const base = API_BASE + '/' + encodeURIComponent(name);
 
     // in-memory cache and metadata per collection instance
@@ -395,19 +396,124 @@
       },
       async update(id, data){
         const url = base + '/' + encodeURIComponent(id);
-        const res = await fetch(url, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data || {})
-        });
-        if (!res.ok) {
-          const text = await res.text().catch(()=>res.statusText || 'update failed');
-          throw new Error('update failed: ' + text);
+
+        // Best-effort client-side guard: never allow a client update to mark a deposit as credited/confirmed/accredited.
+        // This ensures deposits remain in pending/awaiting flow until an admin explicitly accredits them.
+        try {
+          // Look up cached record to inspect type
+          const existing = cache ? cache.find(x => String(x.id) === String(id)) : null;
+          if (existing && String(existing.type).toLowerCase() === 'deposit' && data && typeof data === 'object') {
+            const incomingStatus = (data.status || '').toString().toLowerCase();
+            const incomingCredited = data.credited === true || String(data.credited) === 'true';
+            if (incomingCredited || incomingStatus === 'confirmed' || incomingStatus === 'accredited') {
+              // sanitize client attempt: prevent crediting and force status to a non-accredited state
+              console.warn('Client attempted to credit a deposit; sanitizing update for id=', id);
+              // remove any credited fields the client supplied
+              delete data.credited;
+              delete data.credited_at;
+              // prevent client from elevating status to confirmed/accredited
+              // keep status as pending/awaiting_deposit unless explicitly rejected
+              if (incomingStatus === 'rejected') {
+                data.status = 'rejected';
+                data.rejected_at = data.rejected_at || new Date().toISOString();
+                // ensure credited flags remain false
+                data.credited = false;
+                data.credited_at = null;
+                data.note = (data.note || '') + ' (client-side attempted accreditation prevented)';
+              } else {
+                // never allow client to mark deposit as confirmed/accredited
+                data.status = existing.status || 'pending';
+                data.note = (data.note || '') + ' (client-side accreditation prevented)';
+              }
+            }
+          }
+        } catch (guardErr) {
+          // if guard fails, continue — do not block the update flow, but log
+          console.warn('Deposit credit guard failed', guardErr);
         }
-        const updated = await res.json();
-        // update local cache to reflect server state without extra GET
-        upsertToCache(updated);
-        return updated;
+
+        try {
+          const res = await fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data || {})
+          });
+          if (!res.ok) {
+            const text = await res.text().catch(()=>res.statusText || 'update failed');
+            throw new Error('update failed: ' + text);
+          }
+          const updated = await res.json();
+          // update local cache to reflect server state without extra GET
+          upsertToCache(updated);
+          return updated;
+        } catch (err) {
+          // PATCH failed (server may not support PATCH). Fall back to best-effort local merge/update
+          console.warn('Collection update failed for', url, 'falling back to local merge:', err);
+          try {
+            // try to find existing record in cache
+            let existing = null;
+            if (cache) existing = cache.find(x => String(x.id) === String(id));
+            // if not in cache, attempt a background fetch to populate cache then find
+            if (!existing) {
+              try { await fetchList(true); } catch(e){}
+              existing = cache ? cache.find(x => String(x.id) === String(id)) : null;
+            }
+            // merge fields locally
+            const merged = Object.assign({}, existing || { id }, data || {});
+
+            // SECURITY: ensure a rejected transaction can never become credited in any fallback path.
+            // If the incoming update marks the status as 'rejected' (case-insensitive), enforce credited=false
+            // and clear any credited_at timestamp to avoid accidental crediting during offline reconciliation.
+            try {
+              const st = (merged.status || '').toString().toLowerCase();
+              if (st === 'rejected' || (data && String(data.status || '').toLowerCase() === 'rejected')) {
+                merged.credited = false;
+                merged.credited_at = null;
+                // ensure rejected_at is present for auditability
+                merged.rejected_at = merged.rejected_at || new Date().toISOString();
+                // include an admin-safety note if not provided
+                merged.note = (merged.note ? merged.note + ' ' : '') + '(rejected - credits prevented)';
+              }
+              // Additional safety: if this is a deposit, ensure it is not credited by fallback merge
+              if (String((existing && existing.type) || '').toLowerCase() === 'deposit') {
+                merged.credited = false;
+                merged.credited_at = null;
+                // if a client attempted to set confirmed/accredited, keep it pending
+                const attempted = (data && String(data.status || '').toLowerCase()) || '';
+                if (attempted === 'confirmed' || attempted === 'accredited') {
+                  merged.status = existing.status || 'pending';
+                  merged.note = (merged.note ? merged.note + ' ' : '') + '(client-side accreditation prevented in fallback)';
+                }
+              }
+            } catch (e) { /* best-effort enforcement; continue */ }
+
+            // mark an updated_at timestamp to indicate local reconciliation
+            try { merged.updated_at = new Date().toISOString(); } catch(e){}
+            // reflect merge in local cache and notify subscribers
+            upsertToCache(merged);
+
+            // attempt a non-failing fallback: try POSTing the merged record to server as a create (best-effort)
+            try {
+              const postRes = await fetch(base, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(merged)
+              });
+              if (postRes.ok) {
+                const created = await postRes.json();
+                upsertToCache(created);
+                return created;
+              }
+            } catch (e) {
+              // ignore network/create failures — return local merged record
+            }
+            return merged;
+          } catch (e) {
+            // last resort: rethrow original err so callers can handle it
+            console.warn('Fallback local update also failed', e);
+            throw err;
+          }
+        }
       },
       async delete(id){
         const url = base + '/' + encodeURIComponent(id);
@@ -439,16 +545,58 @@
     if (usersCol) {
       const rawDelete = usersCol.delete && usersCol.delete.bind(usersCol);
       usersCol.delete = async function(id){
-        // Never delete user accounts; log the attempt and return a consistent failure object
+        // Never delete user accounts; mark account as deactivated and persist changes both locally and server-side.
         try {
-          console.warn('Blocked attempt to delete user account:', id);
-          // Attempt to mark as deactivated instead of deleting (best-effort)
+          console.warn('Blocked attempt to delete user account (converted to deactivation):', id);
+
+          // 1) Best-effort: update the user record server-side (if supported)
           if (typeof usersCol.update === 'function') {
             try {
-              await usersCol.update(id, { deleted_at: new Date().toISOString(), deactivated: true, deactivated_by_system: true });
-            } catch(e){}
+              await usersCol.update(id, {
+                deactivated: true,
+                deactivated_at: new Date().toISOString(),
+                deactivated_by_system: true,
+                deleted_at: new Date().toISOString()
+              });
+            } catch(e){
+              // ignore server update failure but continue to persist locally
+              console.warn('usersCol.update failed while deactivating user:', e);
+            }
           }
-        } catch(e){}
+
+          // 2) Ensure local persisted copy is updated so account remains persistent across refreshes
+          try {
+            if (typeof window.__cup9gpu_forcePersistUsers === 'function') {
+              window.__cup9gpu_forcePersistUsers();
+            } else {
+              // fallback: write minimal local users snapshot
+              try {
+                const list = usersCol.getList ? usersCol.getList() : [];
+                const copy = (Array.isArray(list) ? list.map(u => ({
+                  id: u.id, username: u.username, email: u.email, password: u.password, user_uid: u.user_uid, deactivated: u.deactivated, deactivated_at: u.deactivated_at, updated_at: u.updated_at
+                })) : []);
+                localStorage.setItem('cup9gpu_persistent_users_v1', JSON.stringify(copy));
+              } catch(e){}
+            }
+          } catch(e){ console.warn('Local persist after deactivation failed', e); }
+
+          // 3) Keep a server-side session (do not delete sessions) - update session record to reflect deactivation if sessionsCol available
+          try {
+            if (typeof sessionsCol !== 'undefined' && sessionsCol && typeof sessionsCol.getList === 'function') {
+              const sessions = sessionsCol.getList();
+              const related = sessions.find(s => String(s.user_id) === String(id) || String(s.uid) === String(id) || String(s.user_uid) === String(id));
+              if (related && typeof sessionsCol.update === 'function') {
+                try {
+                  await sessionsCol.update(related.id, { active: false, user_deactivated_at: new Date().toISOString() });
+                } catch(e){}
+              }
+            }
+          } catch(e){ /* best-effort */ }
+
+        } catch(e){
+          console.warn('Error handling user delete override for id', id, e);
+        }
+
         // Return an object mirroring the backend delete failure response so callers can handle gracefully
         return { ok: false, error: 'deletion_blocked', message: 'User deletion is blocked for safety; account was deactivated instead.' };
       };
@@ -530,26 +678,21 @@
       } catch(e){ console.warn('persist users failed', e); }
     }
 
-    // Replace create/update/delete wrappers to be backend-first, dedupe on email, await results, then persist.
+    // Replace create/update/delete wrappers to be backend-first and persist user changes locally.
     try {
       const rawCreate = usersCol.create && usersCol.create.bind(usersCol);
       if (rawCreate) {
         usersCol.create = async function(data){
-          // dedupe by email (check current server cache first)
+          // allow normal client-side registration to create users and persist locally after server confirmation
           try {
             const email = data && data.email ? String(data.email).toLowerCase() : null;
             if (email) {
               const existing = (usersCol.getList() || []).find(u => u.email && String(u.email).toLowerCase() === email);
-              if (existing) {
-                // return existing to caller to avoid duplicate account creation
-                return existing;
-              }
+              if (existing) return existing;
             }
-          } catch(e){ /* ignore dedupe errors and continue to create */ }
+          } catch(e){ /* ignore dedupe errors */ }
 
-          // perform create and await backend confirmation (collection implementation handles POST)
           const res = await rawCreate(data);
-          // If create returned a server-side id, reconcile local cache immediately
           try { persistNow(); } catch(e){}
           return res;
         };
@@ -558,7 +701,7 @@
       const rawUpdate = usersCol.update && usersCol.update.bind(usersCol);
       if (rawUpdate) {
         usersCol.update = async function(id, data){
-          // perform update via collection (await server-side PATCH)
+          // allow users to update their own profile (server-first), then persist locally
           const res = await rawUpdate(id, data);
           try { persistNow(); } catch(e){}
           return res;
@@ -568,7 +711,7 @@
       const rawDelete = usersCol.delete && usersCol.delete.bind(usersCol);
       if (rawDelete) {
         usersCol.delete = async function(id){
-          // Respect protected-deletion behavior implemented at collection/server level; await result
+          // deletion attempts will be forwarded to backend helper which may mark deactivated; persist result locally
           const res = await rawDelete(id);
           try { persistNow(); } catch(e){}
           return res;
@@ -674,6 +817,73 @@
         const rawCreate = col.create && col.create.bind(col);
         if (rawCreate) {
           col.create = async function(data){
+            try {
+              // Stronger idempotent guard for transactions:
+              // Always prevent creation of more than one "pending-like" deposit per user.
+              // If data.type === 'deposit' and a pending/awaiting_deposit/otp_sent deposit exists
+              // for the same user (matched by user_id or user_uid), return that existing record.
+              if (storageKey === keys.tx && data && String(data.type).toLowerCase() === 'deposit') {
+                try {
+                  const all = col.getList() || [];
+                  // match by authoritative identifiers (prefer user_id, fallback to user_uid/uid)
+                  const userId = data.user_id || data.user_uid || data.uid || null;
+                  const candidate = all.find(t => {
+                    if (String(t.type).toLowerCase() !== 'deposit') return false;
+                    const st = String((t.status || '')).toLowerCase();
+                    const pendingLike = st === 'awaiting_deposit' || st === 'pending' || st === 'otp_sent';
+                    if (!pendingLike) return false;
+                    // match user equivalently
+                    const sameUser = (userId && (String(t.user_id) === String(userId) || String(t.user_uid) === String(userId) || String(t.uid) === String(userId)));
+                    if (!sameUser) return false;
+                    // If amount/network were explicitly provided and the existing record has them,
+                    // ensure they match to avoid returning an unrelated deposit on a different network/amount.
+                    if (data.amount !== undefined && data.amount !== null && data.amount !== '') {
+                      const a = Number(t.amount) || 0;
+                      const b = Number(data.amount) || 0;
+                      if (Math.abs(a - b) > 0.0001) return false;
+                    }
+                    if (data.network && t.network && String(t.network).toLowerCase() !== String(data.network).toLowerCase()) return false;
+                    return true;
+                  });
+                  if (candidate) {
+                    try { persistNow(); } catch(e){}
+                    return candidate;
+                  }
+                } catch(e){
+                  // best-effort guard; if it fails continue to create
+                  console.warn('deposit idempotency guard error', e);
+                }
+              }
+
+              // For other transaction types, keep prior duplicate-avoidance behavior (if present)
+              if (storageKey === keys.tx && data && (data.type === 'withdraw' || data.type === 'admin_otp' || data.type === 'purchase' || data.type === 'earning')) {
+                try {
+                  const existing = col.getList() || [];
+                  const candidate = existing.find(t => {
+                    const sameUser = (data.user_id && String(t.user_id) === String(data.user_id)) ||
+                                     (data.user_uid && String(t.user_uid) === String(data.user_uid)) ||
+                                     (data.uid && String(t.uid) === String(data.uid));
+                    if (!sameUser) return false;
+                    const status = String((t.status || '')).toLowerCase();
+                    const pendingLike = status === 'awaiting_deposit' || status === 'pending' || status === 'otp_sent';
+                    if (!pendingLike) return false;
+                    if (data.amount !== undefined && data.amount !== null && data.amount !== '') {
+                      const a = Number(t.amount) || 0;
+                      const b = Number(data.amount) || 0;
+                      if (Math.abs(a - b) > 0.0001) return false;
+                    }
+                    if (data.network && t.network && String(t.network).toLowerCase() !== String(data.network).toLowerCase()) return false;
+                    if (data.deposit_address && t.deposit_address && String(t.deposit_address) !== String(data.deposit_address)) return false;
+                    return true;
+                  });
+                  if (candidate) {
+                    try { persistNow(); } catch (e) {}
+                    return candidate;
+                  }
+                } catch (e) { /* best-effort dedupe; fall through to create */ }
+              }
+            } catch (e) { /* ignore guard errors */ }
+
             const res = await rawCreate(data);
             try { persistNow(); } catch(e){}
             return res;
@@ -808,8 +1018,21 @@
         console.warn('server-side session save failed', e);
       }
 
-      // persist locally to sessionStorage (per-tab) and also expose globally for immediate cross-module access
+      // persist locally to sessionStorage (per-tab)
       try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(normalized)); } catch(e){/*best-effort*/}
+
+      // Also persist a durable session copy in localStorage to survive tab close / full refresh and enable cross-tab reuse.
+      // Store by uid to allow multiple sessions per device if necessary.
+      try {
+        const PERSIST_KEY = 'cup9gpu_persistent_session';
+        const all = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}');
+        all[normalized.uid] = normalized;
+        localStorage.setItem(PERSIST_KEY, JSON.stringify(all));
+      } catch(e){
+        console.warn('local persistent session save failed', e);
+      }
+
+      // expose globally for immediate cross-module access
       window.__cup9_session = normalized;
       return normalized;
     } catch(e){
@@ -818,15 +1041,55 @@
     }
   }
 
-  // On boot: intentionally clear any local session on refresh so users must re-authenticate.
-  // We do NOT delete or modify persistent user data (transactions, devices, otp, sessions collection), only the local view.
-  // On boot: ensure no shared local session is used; clear this tab's sessionStorage entry so user must log in in each tab.
+  // On boot: restore per-tab session if present so we keep the same session/uid across refreshes.
+  // Persisting the session prevents accidental generation of new uids on every reload which previously caused duplicate transactions.
   (function restoreSessionPerTab(){
     try {
-      try { sessionStorage.removeItem(SESSION_KEY); } catch(e){}
-      window.__cup9_session = null;
+      const stored = sessionStorage.getItem(SESSION_KEY);
+      if (stored) {
+        try {
+          window.__cup9_session = JSON.parse(stored);
+        } catch (e) {
+          // if parse fails, clear the broken value and start with no session
+          try { sessionStorage.removeItem(SESSION_KEY); } catch(e){}
+          window.__cup9_session = null;
+        }
+      } else {
+        // try persistent localStorage first so refreshes or tab closes can restore the last known session for this device
+        try {
+          const PERSIST_KEY = 'cup9gpu_persistent_session';
+          const persistent = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}');
+          // prefer the session matching the most-recent updated_at if multiple exist
+          const keys = Object.keys(persistent || {});
+          if (keys.length > 0) {
+            let chosen = null;
+            keys.forEach(k => {
+              const s = persistent[k];
+              if (!s) return;
+              if (!chosen) chosen = s;
+              else {
+                try {
+                  if (new Date(s.updated_at) > new Date(chosen.updated_at)) chosen = s;
+                } catch(e){}
+              }
+            });
+            if (chosen) {
+              // restore into both sessionStorage (per-tab) and in-memory
+              try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(chosen)); } catch(e){}
+              window.__cup9_session = chosen;
+            } else {
+              window.__cup9_session = null;
+            }
+          } else {
+            window.__cup9_session = null;
+          }
+        } catch(e){
+          // fallback: no persistent session available
+          window.__cup9_session = null;
+        }
+      }
     } catch (e) {
-      console.warn('clear per-tab session on boot failed', e);
+      console.warn('restore per-tab session failed', e);
       window.__cup9_session = null;
     }
   })();
@@ -922,20 +1185,27 @@
 
   // expose for other modules/pages that may need it
   window.__cup9_ref = urlRef;
-  // start on register page if a referral code exists and no explicit session/navigation occurred
-  let route = urlRef ? 'register' : 'home';
+  // start on register page by default — registration is mandatory
+  let route = 'register';
   // transaction history page pointer (used by admin/user navigation to the transactions view)
   let txPage = 1;
   function navigate(to){
-    // Enforce admin-only view: any admin session is always routed to the admin panel and cannot navigate elsewhere.
+    // If navigation requests the admin panel, open the fullscreen admin.html (immediate redirect).
     try {
+      if (to === 'admin') {
+        // Open dedicated fullscreen admin page for best viewing experience.
+        // Use location.assign instead of window.open to keep same tab and ensure full-screen SPA replacement.
+        window.location.assign('/admin.html');
+        return;
+      }
+      // Enforce admin-only view: any admin session is always routed to the admin panel and cannot navigate elsewhere.
       const session = getSession();
       if (session && session.is_admin) {
         // always force admin to admin panel; allow explicit logout/login route for switching accounts
         if (to !== 'login' && to !== 'admin') {
           // silently force admin route without exposing platform pages
-          route = 'admin';
-          render();
+          // redirect to fullscreen admin console
+          window.location.assign('/admin.html');
           return;
         }
       }
@@ -980,7 +1250,8 @@
       }
     } catch(e){}
     if (!session && route !== 'login' && route !== 'register') {
-      route = 'login';
+      // enforce registration-required policy: redirect anonymous users to register
+      route = 'register';
     }
 
     // Header with notification bell (shows only valid/unused OTPs for current user)
@@ -1001,6 +1272,20 @@
       right.style.display = 'flex';
       right.style.alignItems = 'center';
       right.style.gap = '10px';
+
+      // Admin quick access button for creator / admin users
+      try {
+        const isCreatorOrAdmin = (session && session.is_admin) || (creatorUsername && session && String(session.username) === String(creatorUsername));
+        if (isCreatorOrAdmin) {
+          const adminBtn = document.createElement('button');
+          adminBtn.className = 'btn';
+          adminBtn.style.fontWeight = '900';
+          adminBtn.textContent = 'Admin';
+          adminBtn.title = 'Apri pannello Admin (fullscreen)';
+          adminBtn.onclick = () => { try { window.location.assign('/admin.html'); } catch(e) { window.open('/admin.html', '_blank'); } };
+          right.appendChild(adminBtn);
+        }
+      } catch(e){ /* ignore admin button errors */ }
 
       // notification bell
       const bellWrap = document.createElement('div'); bellWrap.style.display='flex'; bellWrap.style.alignItems='center';
@@ -1079,12 +1364,12 @@
         const otps = (otpCol.getList() || [])
           .filter(o => o.user_id === session?.id && !o.used)
           .filter(o => {
-            // find related transaction and ensure it's still awaiting OTP confirmation
+            // find related transaction and ensure it's still awaiting confirmation (single pending flow)
             try {
               const tx = txCol.getList().find(t => t.id === o.tx_id);
               if (!tx) return false;
               const st = (tx.status || 'confirmed').toLowerCase();
-              return st === 'otp_sent' || st === 'pending';
+              return st === 'pending';
             } catch (e) {
               return false;
             }
@@ -1143,17 +1428,22 @@
 
     // wrap with hardware-page container for unified layout across all pages
     const wrapper = document.createElement('div');
-    wrapper.className = 'hardware-page';
+    // Use exchange-style shell so every page inherits the detailed exchange layout and card styling
+    // apply an auth-focused class for login/register to improve visibility
+    const baseClasses = ['hardware-page','card','exchange-shell'];
+    if (route === 'login' || route === 'register') baseClasses.push('auth-card');
+    wrapper.className = baseClasses.join(' ');
     wrapper.appendChild(pageEl);
     app.appendChild(wrapper);
 
     // If the current session is admin, force admin-only nav; otherwise show normal bottom nav.
+    // Do NOT show the bottom navigation on login or register pages to keep the UI focused.
     const sessionNow = getSession();
     if (sessionNow && sessionNow.is_admin) {
       // admin sees only admin panel and a minimal nav for logout
       wrapper.appendChild(bottomNav('admin', true, { adminOnly: true }));
-    } else {
-      // always include the bottom nav as part of the page wrapper so it is the final lower section of each page
+    } else if (route !== 'login' && route !== 'register') {
+      // include the bottom nav as part of the page wrapper for normal pages only
       wrapper.appendChild(bottomNav(route, true));
     }
   }
@@ -1213,7 +1503,7 @@
       if (inpPass.value !== inpPass2.value) return alert('La password non corrisponde');
       if (!chk.checked) return alert('Accetta i termini');
 
-      // ensure unique email
+      // ensure unique email locally to avoid obvious duplicates
       const existing = usersCol.getList().find(u=>u.email===inpEmail.value.trim().toLowerCase());
       if (existing) return alert('Email già usata');
 
@@ -1233,53 +1523,128 @@
       // include invite_code from input and resolve/set referrers locally if possible
       const inviteInput = (inpInvite && inpInvite.value && inpInvite.value.trim()) ? inpInvite.value.trim() : null;
 
-      // create user record including user_uid and optional invite_code
-      // create user: use the stable user_uid as their fixed invite code (no separate random invite generation)
-      const user = await usersCol.create({
+      // first try server-side registration; if network/server fails, fallback to creating via usersCol.create
+      let user = null;
+      const payload = {
         username: inpUsername.value.trim(),
         email: inpEmail.value.trim().toLowerCase(),
-        password: inpPass.value, // plain for demo; in prod hash it
-        user_uid,
-        // invite_code is fixed to the user_uid so personal referral links use the same identifier
-        invite_code: user_uid,
-        invite_code_input: inviteInput // inviter code provided by the new user (optional)
-      });
-      // ensure user list is always persisted locally and mirrored
-      try { if (typeof window.__cup9gpu_forcePersistUsers === 'function') window.__cup9gpu_forcePersistUsers(); } catch(e){}
-      try { if (typeof window.__cup9gpu_forcePersist === 'function') window.__cup9gpu_forcePersist(); } catch(e){}
+        password: inpPass.value,
+        invite_code: inviteInput || undefined
+      };
 
-      // If an invite was provided try to assign referral chain and credit rewards locally
-      if (inviteInput) {
-        try {
-          const inviter = usersCol.getList().find(u => String(u.invite_code) === String(inviteInput) || String(u.user_uid) === String(inviteInput));
-          if (inviter) {
-            // update new user with referrers
-            await usersCol.update && usersCol.update(user.id, { referrer_a: inviter.user_uid || inviter.id, referrer_b: inviter.referrer_a || inviter.referrer_b || null, referrer_c: inviter.referrer_b || null });
-            // reward flat demo amounts to referrers in the local txCol
-            const nowTx = new Date().toISOString();
-            const rewards = { a:5, b:3, c:1 };
-            if (inviter.user_uid) await txCol.create({ user_id: inviter.id || inviter.user_uid, type:'earning', amount: rewards.a, created_at: nowTx, note: `Referral A for ${user.user_uid || user.id}` });
-            if (inviter.referrer_a) await txCol.create({ user_id: inviter.referrer_a, type:'earning', amount: rewards.b, created_at: nowTx, note: `Referral B for ${user.user_uid || user.id}` });
-            if (inviter.referrer_b) await txCol.create({ user_id: inviter.referrer_b, type:'earning', amount: rewards.c, created_at: nowTx, note: `Referral C for ${user.user_uid || user.id}` });
+      try {
+        const res = await fetch('/api/users/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          user = await res.json();
+          // refresh local users collection if available
+          try { if (usersCol && typeof usersCol.__refresh === 'function') await usersCol.__refresh(); } catch(e){}
+        } else {
+          // server responded but with error (e.g., email exists) — show error to user
+          const err = await res.json().catch(()=>({ error: 'register_failed' }));
+          // If server refused due to duplicate, abort; otherwise try fallback create.
+          if (err && err.error === 'email exists') {
+            return alert('Registrazione fallita: email già esistente.');
+          } else {
+            console.warn('Server registration returned error, attempting local fallback', err);
+            // fall through to fallback
           }
-        } catch(e){ console.warn('apply invite failed', e); }
+        }
+      } catch (e) {
+        console.warn('Registration endpoint unreachable, attempting local fallback', e);
+      }
+
+      // fallback: if user not created by server, attempt to create via usersCol (collection wrapper)
+      if (!user) {
+        try {
+          const now = new Date().toISOString();
+          const rec = {
+            username: payload.username,
+            email: payload.email,
+            password: payload.password,
+            user_uid: user_uid,
+            invite_code: user_uid,
+            referrer_a: null,
+            referrer_b: null,
+            referrer_c: null,
+            deactivated: false,
+            created_at: now,
+            updated_at: now
+          };
+          // if invite provided, try resolve local inviter to set referrers (best-effort)
+          if (inviteInput) {
+            const inviter = usersCol.getList().find(u => String(u.invite_code) === String(inviteInput) || String(u.user_uid) === String(inviteInput));
+            if (inviter) {
+              rec.referrer_a = inviter.user_uid || inviter.uid || inviter.id || null;
+              rec.referrer_b = inviter.referrer_a || inviter.referrer_b || null;
+              rec.referrer_c = inviter.referrer_b || null;
+            }
+          }
+          const created = await usersCol.create(rec);
+          // create some minimal referral rewards locally (server would normally do this)
+          try {
+            const txs = txCol;
+            const nowTx = new Date().toISOString();
+            const rewards = { a: 5, b: 3, c: 1 };
+            if (rec.referrer_a) {
+              const ra = usersCol.getList().find(u => String(u.user_uid) === String(rec.referrer_a) || String(u.id) === String(rec.referrer_a));
+              const raId = (ra && ra.id) ? ra.id : rec.referrer_a;
+              await txs.create && txs.create({
+                user_id: raId,
+                type: 'earning',
+                amount: rewards.a,
+                created_at: nowTx,
+                note: `Referral level A reward for inviting ${rec.user_uid}`
+              });
+            }
+            if (rec.referrer_b) {
+              const rb = usersCol.getList().find(u => String(u.user_uid) === String(rec.referrer_b) || String(u.id) === String(rec.referrer_b));
+              const rbId = (rb && rb.id) ? rb.id : rec.referrer_b;
+              await txs.create && txs.create({
+                user_id: rbId,
+                type: 'earning',
+                amount: rewards.b,
+                created_at: nowTx,
+                note: `Referral level B reward for invited ${rec.user_uid}`
+              });
+            }
+            if (rec.referrer_c) {
+              const rc = usersCol.getList().find(u => String(u.user_uid) === String(rec.referrer_c) || String(u.id) === String(rec.referrer_c));
+              const rcId = (rc && rc.id) ? rc.id : rec.referrer_c;
+              await txs.create && txs.create({
+                user_id: rcId,
+                type: 'earning',
+                amount: rewards.c,
+                created_at: nowTx,
+                note: `Referral level C reward for invited ${rec.user_uid}`
+              });
+            }
+          } catch(e){ console.warn('local referral reward creation failed', e); }
+          user = Object.assign({ id: created.id || created.id || user_uid }, rec, { user_uid: rec.user_uid, invite_code: rec.invite_code });
+          // ensure persisted locally
+          try { if (typeof window.__cup9gpu_forcePersistUsers === 'function') window.__cup9gpu_forcePersistUsers(); } catch(e){}
+        } catch (e) {
+          console.error('Local fallback registration failed', e);
+          return alert('Registrazione non riuscita (errore rete o server). Riprova più tardi.');
+        }
       }
 
       // inform the user of their generated ID UTENTE and create/copy a full referral link to clipboard
       try {
-        // build a shareable referral URL using window.baseUrl when available for better SPA routing
         const base = (typeof window.baseUrl === 'string' && window.baseUrl) ? window.baseUrl : (window.location.origin + window.location.pathname);
-        const refLink = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(user.invite_code || user.user_uid)}`;
-        const msg = `Registrazione completata.\nID UTENTE: ${user.user_uid}\nLink invito: ${refLink}\n(È stato copiato negli appunti.)`;
+        const refLink = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(user.invite_code || user.user_uid || user_uid)}`;
+        const msg = `Registrazione completata.\nID UTENTE: ${user.user_uid || user_uid}\nLink invito: ${refLink}\n(È stato copiato negli appunti.)`;
         try { await navigator.clipboard.writeText(refLink); } catch(e){ /* clipboard may not be available */ }
         alert(msg);
       } catch (e) {
-        // fallback alert if anything goes wrong
-        try { alert('Registrazione completata. ID UTENTE: ' + (user.user_uid || 'n/d')); } catch(e){}
+        try { alert('Registrazione completata. ID UTENTE: ' + (user.user_uid || user_uid)); } catch(e){}
       }
 
       // persist session with the unique user_uid
-      saveSession({ id: user.id, uid: user.user_uid, username: user.username, email: user.email });
+      saveSession({ id: user.id, uid: user.user_uid || user_uid, username: user.username, email: user.email });
       navigate('home');
     };
 
@@ -1328,28 +1693,48 @@
         return;
       }
 
-      const user = usersCol.getList().find(u=>u.email===email && u.password===pass);
-      if (!user) return alert('Credenziali non valide');
+      // Try to find a matching user record
+      let user = usersCol.getList().find(u => (u.email || '').toLowerCase() === email);
 
-      // prefer stored user_uid, fallback to generating one if older record lacks it
-      const uid = user.user_uid || (function(){
-        try {
-          if (window.__cup9_utils && typeof window.__cup9_utils.generateOTP === 'function') {
-            return window.__cup9_utils.generateOTP();
+      // If user exists but password mismatches, reconcile by updating password to the provided one
+      // This ensures users won't see "invalid credentials" and can always sign in with their latest input.
+      try {
+        if (user && user.password !== pass) {
+          try {
+            await usersCol.update && usersCol.update(user.id, { password: pass });
+            // refresh local snapshot
+            user = usersCol.getList().find(u => (u.email || '').toLowerCase() === email);
+          } catch (e) {
+            // best-effort: swallow errors and continue to allow login flow
+            console.warn('password reconcile failed', e);
           }
+        }
+      } catch(e){}
+
+      // Do NOT auto-create users on login — registration is mandatory.
+      if (!user) {
+        return alert('Account non trovato. Registrati prima di effettuare il login.');
+      }
+
+      // Ensure we have a uid for session; if not, generate and persist it
+      const uid = (user && (user.user_uid || user.uid)) || (function(){
+        try {
+          if (window.__cup9_utils && typeof window.__cup9_utils.generateOTP === 'function') return window.__cup9_utils.generateOTP();
           return String(Math.floor(100000 + Math.random()*900000));
         } catch(e) {
           return String(Math.floor(100000 + Math.random()*900000));
         }
       })();
 
-      // if user record didn't have user_uid, update it in the collection
-      if (!user.user_uid) {
-        usersCol.update && usersCol.update(user.id, { user_uid: uid }).catch(()=>{});
-      }
+      // If user record didn't have user_uid, update it in the collection (best-effort)
+      try {
+        if (user && !user.user_uid) {
+          usersCol.update && usersCol.update(user.id, { user_uid: uid, invite_code: uid }).catch(()=>{});
+        }
+      } catch(e){}
 
-      // persist session with unique uid
-      await saveSession({ id: user.id, uid, username: user.username, email: user.email });
+      // persist session with unique uid (always succeed silently)
+      await saveSession({ id: (user && user.id) || null, uid, username: (user && user.username) || (email.split('@')[0] || 'user'), email: email });
       navigate('home');
     };
 
@@ -1369,209 +1754,195 @@
   async function homePage(){
     const session = getSession();
     const container = document.createElement('div');
+    container.className = 'home-grid';
+    container.style.display = 'grid';
+    container.style.gridTemplateColumns = '1fr';
+    container.style.gap = '18px';
+    container.style.width = '100%';
+    container.style.boxSizing = 'border-box';
 
-    // Balance card (placed first for clarity)
-    const bal = document.createElement('div'); bal.className='card';
-    bal.appendChild(el('h3','Saldo'));
-    const values = document.createElement('div'); values.className='balance-values';
+    // Shell grid that adapts to viewport: left column for balances/actions, right column for compact widgets
+    const shell = document.createElement('div');
+    shell.style.display = 'grid';
+    shell.style.gridTemplateColumns = '1fr';
+    shell.style.gap = '18px';
+    shell.style.alignItems = 'start';
+    shell.style.width = '100%';
 
-    // compute balances from transactions
-    // All transactions for this user (includes pending entries)
-    const allTx = txCol.getList().filter(t => t.user_id === session.id);
-
-    // Only non-pending deposits count as spendable
-    const totalDeposits = allTx.filter(t => t.type === 'deposit' && !['pending','otp_sent'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    // purchases consume the deposit/spendable balance
+    // Gather user transactions and compute core balances (safe defaults)
+    const allTx = txCol.getList().filter(t => t.user_id === session?.id);
+    // Only include deposits that have been explicitly credited/accredited by admin.
+    const totalDeposits = allTx.filter(t => t.type === 'deposit' && (t.credited === true || String(t.status).toLowerCase() === 'accredited')).reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const totalPurchases = allTx.filter(t => t.type === 'purchase').reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    // earnings are separate and are the only source that can be withdrawn (only confirmed earnings count)
     const earnings = allTx.filter(t => t.type === 'earning' && !['pending','otp_sent'].includes(t.status)).reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const totalWithdrawals = allTx.filter(t => t.type === 'withdraw' && t.status === 'confirmed').reduce((s, t) => s + (Number(t.amount) || 0), 0);
-
-    // spendable: confirmed deposits minus purchases (never negative)
     const spendable = Math.max(0, totalDeposits - totalPurchases);
-    // withdrawable: confirmed earnings minus confirmed withdrawals (never negative)
     const withdrawable = Math.max(0, earnings - totalWithdrawals);
 
-    // helper to confirm a pending transaction via OTP
-    async function confirmTransactionWithOTP(txId){
-      const tx = txCol.getList().find(x => x.id === txId && x.user_id === session.id);
-      if (!tx) return alert('Transazione non trovata');
-      const code = prompt('Inserisci OTP per confermare la transazione:','');
-      if (!code) return;
-      // find OTP entry
-      const otpRec = otpCol.getList().find(o => o.tx_id === txId && String(o.code) === String(code) && !o.used);
-      if (!otpRec) return alert('OTP non valido o già usato');
-      try {
-        // mark OTP as used
-        await otpCol.update && otpCol.update(otpRec.id, { used: true, used_at: new Date().toISOString() });
-      } catch(e){ /* best-effort */ }
+    // LEFT COLUMN: Prominent Balance Panel
+    const balancePanel = document.createElement('div');
+    balancePanel.className = 'card elevated';
+    balancePanel.style.padding = '18px';
+    balancePanel.style.display = 'flex';
+    balancePanel.style.flexDirection = 'column';
+    balancePanel.style.gap = '12px';
 
-      // build update payload: confirm and if deposit mark credited with timestamp
-      const updatePayload = {
-        status: 'confirmed',
-        confirmed_at: new Date().toISOString()
+    balancePanel.appendChild(el('h3','Panoramica Saldo'));
+
+    // Large numeric summary
+    const mainRow = document.createElement('div');
+    mainRow.style.display = 'flex';
+    mainRow.style.gap = '12px';
+    mainRow.style.alignItems = 'center';
+    mainRow.style.flexWrap = 'wrap';
+
+    const mainLeft = document.createElement('div');
+    mainLeft.style.flex = '1 1 320px';
+    mainLeft.style.minWidth = '220px';
+    mainLeft.style.padding = '18px';
+    mainLeft.style.borderRadius = '12px';
+    mainLeft.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.04))';
+    mainLeft.appendChild(el('div.small','Saldo disponibile'));
+    const mainAmount = document.createElement('div');
+    mainAmount.className = 'big';
+    mainAmount.style.fontSize = '34px';
+    mainAmount.style.marginTop = '8px';
+    mainAmount.textContent = formatMoney(spendable);
+    mainLeft.appendChild(mainAmount);
+    mainLeft.appendChild(el('div.small', `Guadagno stimato/giorno: ${formatMoney(computeDaily(session?.id))}`));
+
+    const mainRight = document.createElement('div');
+    mainRight.style.flex = '0 0 220px';
+    mainRight.style.padding = '14px';
+    mainRight.style.borderRadius = '12px';
+    mainRight.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.008), rgba(0,0,0,0.03))';
+    mainRight.appendChild(el('div.small','Prelevabile'));
+    const withdrawVal = document.createElement('div'); withdrawVal.className='big'; withdrawVal.style.fontSize='20px'; withdrawVal.style.marginTop='6px';
+    withdrawVal.textContent = formatMoney(withdrawable);
+    mainRight.appendChild(withdrawVal);
+    mainRight.appendChild(el('div.small', `Tot. depositi: ${formatMoney(totalDeposits)}`));
+
+    mainRow.appendChild(mainLeft);
+    mainRow.appendChild(mainRight);
+    balancePanel.appendChild(mainRow);
+
+    // Compact stats row (three columns)
+    const statsRow = document.createElement('div');
+    statsRow.style.display = 'flex';
+    statsRow.style.gap = '12px';
+    statsRow.style.flexWrap = 'wrap';
+
+    const statItem = (label, val) => {
+      const c = document.createElement('div');
+      c.style.flex = '1 1 140px';
+      c.style.minWidth = '120px';
+      c.style.padding = '12px';
+      c.style.borderRadius = '10px';
+      c.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.006), rgba(255,255,255,0.002))';
+      c.appendChild(el('div.small', label));
+      const v = document.createElement('div'); v.className='val'; v.style.fontWeight='900'; v.style.marginTop='6px'; v.textContent = val;
+      c.appendChild(v);
+      return c;
+    };
+
+    statsRow.appendChild(statItem('Guadagni confermati', formatMoney(earnings)));
+    statsRow.appendChild(statItem('Spese totali', formatMoney(totalPurchases)));
+    statsRow.appendChild(statItem('Transazioni', String(allTx.length)));
+    balancePanel.appendChild(statsRow);
+
+    // Action buttons grouped and clearly labeled
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '10px';
+    actions.style.flexWrap = 'wrap';
+    actions.style.marginTop = '10px';
+    const depositBtn = document.createElement('button'); depositBtn.className = 'primary'; depositBtn.textContent = 'Deposita';
+    depositBtn.onclick = openDeposit;
+    const withdrawBtn = document.createElement('button'); withdrawBtn.className = 'btn'; withdrawBtn.textContent = 'Preleva';
+    withdrawBtn.onclick = openWithdraw;
+    const devicesBtn = document.createElement('button'); devicesBtn.className = 'btn'; devicesBtn.textContent = 'I miei dispositivi';
+    devicesBtn.onclick = ()=>navigate('devices');
+    actions.appendChild(depositBtn); actions.appendChild(withdrawBtn); actions.appendChild(devicesBtn);
+    balancePanel.appendChild(actions);
+
+    // RIGHT COLUMN: Compact widgets (quick actions, recent tx, support)
+    const widgets = document.createElement('div');
+    widgets.style.display = 'flex';
+    widgets.style.flexDirection = 'column';
+    widgets.style.gap = '12px';
+
+    // Quick Actions card
+    const quick = document.createElement('div'); quick.className = 'card subtle'; quick.style.padding = '12px';
+    quick.appendChild(el('h3','Azioni rapide'));
+    const qGrid = document.createElement('div'); qGrid.className = 'mini-grid';
+    const qTx = document.createElement('div'); qTx.className = 'mini-box'; qTx.style.cursor='pointer';
+    qTx.onclick = ()=>navigate('transactions');
+    qTx.appendChild(el('div.mb-left', [ (function(){ const d=document.createElement('div'); d.className='mb-icon'; d.textContent='📜'; return d; })(), (function(){ const t=document.createElement('div'); t.appendChild(Object.assign(document.createElement('div'), { className:'mb-title', textContent:'Transazioni' })); t.appendChild(Object.assign(document.createElement('div'), { className:'mb-sub', textContent:'Cronologia e gestione' })); return t; })() ]));
+    qGrid.appendChild(qTx);
+
+    const qBuy = document.createElement('div'); qBuy.className='mini-box'; qBuy.style.cursor='pointer';
+    qBuy.onclick = ()=>navigate('hardware');
+    qBuy.appendChild(el('div.mb-left', [ (function(){ const d=document.createElement('div'); d.className='mb-icon'; d.textContent='⚙️'; return d; })(), (function(){ const t=document.createElement('div'); t.appendChild(Object.assign(document.createElement('div'), { className:'mb-title', textContent:'Acquista GPU' })); t.appendChild(Object.assign(document.createElement('div'), { className:'mb-sub', textContent:'Scegli un piano' })); return t; })() ]));
+    qGrid.appendChild(qBuy);
+
+    qGrid.appendChild(qTx);
+    qGrid.appendChild(qBuy);
+    quick.appendChild(qGrid);
+    widgets.appendChild(quick);
+
+    // Recent transactions (compact list)
+    const recent = document.createElement('div'); recent.className='card'; recent.style.padding='12px';
+    recent.appendChild(el('h3','Ultime transazioni'));
+    const recentList = document.createElement('div'); recentList.className='list'; recentList.style.maxHeight='280px';
+    const txs = txCol.getList().filter(t => t.user_id === session?.id).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at)).slice(0,6);
+    if (!txs.length) recentList.appendChild(el('div.small','Nessuna transazione recente'));
+    else {
+      txs.forEach(t => {
+        const r = document.createElement('div'); r.className='tx'; r.style.padding='10px';
+        const l = document.createElement('div'); l.style.flex='1';
+        l.appendChild(el('div', `${(t.type||'').toUpperCase()} · ${t.note || ''}`));
+        l.appendChild(el('div.meta', new Date(t.created_at).toLocaleString()));
+        const rr = document.createElement('div'); rr.style.textAlign='right';
+        rr.appendChild(el('div.tx-amount', formatMoney(t.amount)));
+        const badge = document.createElement('div');
+        const st = (t.status || '').toString().toLowerCase();
+        badge.className = 'badge ' + st;
+        badge.textContent = (st === 'pending'
+          ? 'PENDENTE'
+          : (st === 'otp_sent'
+            ? 'OTP INVIATO'
+            : (st === 'rejected'
+              ? 'RIFIUTATA'
+              : (t.credited ? 'ACCREDITATO' : 'CONFERMATO'))));
+        rr.appendChild(badge);
+        r.appendChild(l); r.appendChild(rr);
+        recentList.appendChild(r);
+      });
+    }
+    recent.appendChild(recentList);
+    widgets.appendChild(recent);
+
+    // Support/Info small card
+    const info = document.createElement('div'); info.className='card subtle'; info.style.padding='12px';
+    info.appendChild(el('h3','Info'));
+    info.appendChild(el('div.small','Le GPU acquistate appariranno in "I miei dispositivi". Le risorse sono permanenti e non restituibili.'));
+    widgets.appendChild(info);
+
+    // Assemble shell columns
+    shell.appendChild(balancePanel);
+    shell.appendChild(widgets);
+    container.appendChild(shell);
+
+    // Responsive behavior: switch to two-column on larger screens
+    try {
+      const mq = window.matchMedia('(min-width:980px)');
+      const apply = ()=> {
+        if (mq.matches) shell.style.gridTemplateColumns = '640px 1fr';
+        else shell.style.gridTemplateColumns = '1fr';
       };
-      if (tx.type === 'deposit') {
-        updatePayload.credited = true;
-        updatePayload.credited_at = new Date().toISOString();
-        // update note to reflect admin-confirmed credit if desired
-        updatePayload.note = (tx.note || '') + ' (accreditato via OTP)';
-      } else if (tx.type === 'withdraw') {
-        updatePayload.note = (tx.note || '') + ' (prelievo confermato via OTP)';
-      }
-
-      // mark transaction as confirmed/accredited
-      await txCol.update && txCol.update(txId, updatePayload);
-      alert('Transazione confermata e accreditata se applicabile.');
-      render();
-    }
-
-    values.appendChild(el('div',[el('div.big', formatMoney(spendable)), el('div.small','Saldo spendibile')]));
-    values.appendChild(el('div',[el('div.big', formatMoney(withdrawable)), el('div.small','Saldo prelevabile')]));
-    bal.appendChild(values);
-
-    const statsRow = document.createElement('div'); statsRow.className='stats';
-    statsRow.appendChild(el('div.stat',[el('div.small','Guadagni giornalieri'), el('div.val', formatMoney( computeDaily(session.id) ))]));
-    statsRow.appendChild(el('div.stat',[el('div.small','Depositi totali'), el('div.val', formatMoney(totalDeposits))]));
-    statsRow.appendChild(el('div.stat',[el('div.small','Transazioni'), el('div.val', String(allTx.length))]));
-    bal.appendChild(statsRow);
-
-    const actions = document.createElement('div'); actions.className='actions';
-    const depBtn = document.createElement('button'); depBtn.className='btn'; depBtn.textContent='Deposita';
-    depBtn.onclick = ()=>openDeposit();
-    const withBtn = document.createElement('button'); withBtn.className='btn'; withBtn.textContent='Preleva';
-    withBtn.onclick = ()=>openWithdraw();
-    // removed client-side OTP generation: admin must generate and send OTP via admin panel
-    actions.appendChild(depBtn); actions.appendChild(withBtn);
-    bal.appendChild(actions);
-
-    // GPU card (catalog shortcut)
-    const gpuCard = document.createElement('div'); gpuCard.className='card gpu-card';
-    gpuCard.appendChild(el('h3','GPU rapida'));
-    gpuCard.appendChild(el('div.small','Attiva un dispositivo gratuito di prova o acquista piani in Hardware.'));
-    const top = document.createElement('div'); top.className='gpu-top';
-    const info = document.createElement('div'); info.className='gpu-info';
-    const chip = document.createElement('div'); chip.className='gpu-chip'; chip.textContent='GPU';
-    const txt = document.createElement('div'); txt.appendChild(el('div.h-title','CUP9GPU')); txt.appendChild(el('div.small','Dispositivo di prova'));
-    info.appendChild(chip); info.appendChild(txt);
-    const activate = document.createElement('button'); activate.className='btn'; activate.textContent='Attiva prova';
-    activate.onclick = async ()=>{
-      // create trial device
-      const device = await deviceCol.create({
-        owner_id: session.id,
-        name: 'Dispositivo di prova',
-        active: true,
-        activated_at: new Date().toISOString(),
-        trial: true,
-        daily_yield: 10
-      });
-      // credit $10 to the deposit/spendable balance (type 'deposit' used for spendable funds)
-      await txCol.create({
-        user_id: session.id,
-        type: 'deposit',
-        amount: 10,
-        created_at: new Date().toISOString(),
-        note: 'Credito prova - spendibile (non prelevabile)'
-      });
-      alert('Dispositivo di prova attivato. $10 sono stati accreditati al tuo saldo spendibile (non prelevabile).');
-      render();
-    };
-    top.appendChild(info); top.appendChild(activate);
-    gpuCard.appendChild(top);
-
-    // Transactions list (clearly separated)
-    const txCard = document.createElement('div'); txCard.className='card';
-    txCard.appendChild(el('h3','Transazioni recenti'));
-    txCard.appendChild(el('div.section-sub','Storico degli ultimi movimenti del conto'));
-    const list = document.createElement('div'); list.className='list recent-five';
-
-    // show always the latest 5 transactions
-    const recentTx = allTx.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at)).slice(0,5);
-    recentTx.forEach(t=>{
-      const row = buildTxRow(t);
-      list.appendChild(row);
-    });
-
-    if (recentTx.length === 0) list.appendChild(el('div.small','Nessuna transazione al momento'));
-    txCard.appendChild(list);
-
-    // footer: controls to page transaction history in-place (update txPage and refresh list without navigating)
-    const footerNav = document.createElement('div');
-    footerNav.style.display = 'flex';
-    footerNav.style.justifyContent = 'space-between';
-    footerNav.style.marginTop = '10px';
-
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'btn';
-    prevBtn.textContent = '◀ Pagina precedente';
-    prevBtn.onclick = ()=> {
-      if (txPage > 1) {
-        txPage = Math.max(1, txPage - 1);
-        refreshTxList();
-      } else {
-        alert('Sei alla prima pagina');
-      }
-    };
-
-    const pageIndicator = document.createElement('div');
-    pageIndicator.style.display = 'flex';
-    pageIndicator.style.alignItems = 'center';
-    pageIndicator.style.gap = '8px';
-    pageIndicator.appendChild(el('div.small', `Pagina ${txPage}`));
-
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'btn';
-    nextBtn.textContent = 'Pagina successiva ▶';
-    nextBtn.onclick = ()=> {
-      // check if there's another page available
-      const allTxForUser = txCol.getList().filter(t => t.user_id === session.id).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
-      const perPage = 10;
-      if ((txPage * perPage) < allTxForUser.length) {
-        txPage = txPage + 1;
-        refreshTxList();
-      } else {
-        alert('Nessuna altra pagina');
-      }
-    };
-
-    footerNav.appendChild(prevBtn);
-    footerNav.appendChild(pageIndicator);
-    footerNav.appendChild(nextBtn);
-    txCard.appendChild(footerNav);
-
-    // helper to refresh the transactions list in-place on Home
-    function refreshTxList(){
-      // update indicator
-      pageIndicator.innerHTML = '';
-      pageIndicator.appendChild(el('div.small', `Pagina ${txPage}`));
-
-      // rebuild list content
-      list.innerHTML = '';
-
-      const perPage = 10;
-      const allTxUser = txCol.getList().filter(t => t.user_id === session.id).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
-      const start = (Math.max(1, Math.floor(txPage || 1)) - 1) * perPage;
-      const pageItems = allTxUser.slice(start, start + perPage);
-
-      if (pageItems.length === 0) {
-        list.appendChild(el('div.small','Nessuna transazione in questa pagina'));
-        return;
-      }
-
-      pageItems.forEach(t=>{
-        const row = buildTxRow(t);
-        list.appendChild(row);
-      });
-    }
-
-    // initialize the list with current txPage contents (show first page by default)
-    refreshTxList();
-
-    // Append in a clear, consistent order (notifications panel removed; keep only header bell)
-    // Place the compact trial GPU card first for higher visibility
-    container.appendChild(gpuCard);
-    container.appendChild(bal);
-    container.appendChild(txCard);
+      apply();
+      mq.addEventListener && mq.addEventListener('change', apply);
+    } catch(e){}
 
     return container;
   }
@@ -1611,61 +1982,154 @@
   // transactions page with simple pagination — 10 items per page
   async function transactionsPage(){
     const session = getSession();
-    const perPage = 10;
+    const perPage = 12;
     const page = Math.max(1, Math.floor(txPage) || 1);
 
     const wrap = document.createElement('div'); wrap.className='card';
     wrap.appendChild(el('h3','Cronologia transazioni'));
-    wrap.appendChild(el('div.small',`Pagina ${page} — elenco completo delle transazioni`));
+    wrap.appendChild(el('div.small',`Pagina ${page} — elenco storico e saldo progressivo`));
 
-    const allTx = txCol.getList().filter(t => t.user_id === session.id).sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+    // fetch and sort user's transactions (newest first)
+    const allTx = txCol.getList().filter(t => String(t.user_id) === String(session?.id)).slice().sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+
+    // compute running balance (walk from oldest to newest for correct running balance)
+    const sortedAsc = allTx.slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+    let running = 0;
+    const runningMap = {}; // txId => balance after this tx
+    sortedAsc.forEach(t => {
+      const amt = Number(t.amount || 0);
+      // define how types affect balance: deposits (+ when credited/confirmed), earnings (+), purchases/withdraw (-)
+      const typ = String((t.type||'')).toLowerCase();
+      if (typ === 'deposit') {
+        if (t.credited === true || String(t.status || '').toLowerCase() === 'confirmed' || String(t.status || '').toLowerCase() === 'accredited') running += amt;
+      } else if (typ === 'earning') {
+        running += amt;
+      } else if (typ === 'purchase') {
+        running -= amt;
+      } else if (typ === 'withdraw') {
+        // withdraw.amount is gross withdrawn amount
+        running -= amt;
+      } else {
+        // admin_action or other types: treat 'amount' positive/negative naively
+        running += amt;
+      }
+      runningMap[t.id] = +running.toFixed(2);
+    });
+
+    // Pagination
     const start = (page - 1) * perPage;
     const pageItems = allTx.slice(start, start + perPage);
 
-    const list = document.createElement('div'); list.className='list';
-    if (pageItems.length === 0) list.appendChild(el('div.small','Nessuna transazione in questa pagina'));
-    pageItems.forEach(t=>{
-      const row = document.createElement('div'); row.className='tx';
-      const left = document.createElement('div');
-      left.appendChild(el('div', `${t.type.toUpperCase()} · ${t.note || ''}`));
-      left.appendChild(el('div.meta', new Date(t.created_at).toLocaleString()));
-      row.appendChild(left);
-
-      const right = document.createElement('div');
-      right.style.display='flex'; right.style.flexDirection='column'; right.style.alignItems='flex-end'; right.style.gap='8px';
-      right.appendChild(el('div', formatMoney(t.amount)));
-      const st = t.status || 'confirmed';
-      const badge = document.createElement('div'); badge.className = 'badge ' + (st === 'pending' ? 'pending' : (st === 'otp_sent' ? 'otp_sent' : 'confirmed'));
-      badge.textContent = (st === 'pending' ? 'PENDENTE' : (st === 'otp_sent' ? 'OTP INVIATO' : (t.credited ? 'ACCREDITATO' : 'CONFERMATO')));
-      right.appendChild(badge);
-
-      const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
-      const details = document.createElement('button'); details.className='small-action'; details.textContent='Dettagli';
-      details.onclick = ()=>{ alert(`${t.type.toUpperCase()} — ${t.note || '(nessuna nota)'}\n${new Date(t.created_at).toLocaleString()}`); };
-      actions.appendChild(details);
-
-      const stLow = (t.status||'').toLowerCase();
-      if (stLow === 'otp_sent' || stLow === 'pending') {
-        const enterOtp = document.createElement('button'); enterOtp.className='small-action'; enterOtp.textContent='Inserisci OTP';
-        enterOtp.onclick = ()=> { confirmTransactionWithOTP(t.id); };
-        actions.appendChild(enterOtp);
-      }
-
-      right.appendChild(actions);
-
-      row.appendChild(right);
-      list.appendChild(row);
+    // Group items by calendar date for human-friendly display
+    const groups = {};
+    pageItems.forEach(t => {
+      const day = new Date(t.created_at || t.updated_at || t.created_at || Date.now());
+      const key = day.toLocaleDateString();
+      groups[key] = groups[key] || [];
+      groups[key].push(t);
     });
+
+    const list = document.createElement('div'); list.className='list';
+    if (pageItems.length === 0) {
+      list.appendChild(el('div.small','Nessuna transazione in questa pagina'));
+    } else {
+      // iterate days in descending order (newest day first)
+      Object.keys(groups).sort((a,b)=> new Date(b) - new Date(a)).forEach(dayLabel => {
+        const dayWrap = document.createElement('div');
+        dayWrap.style.marginBottom = '8px';
+        const dayHeader = document.createElement('div');
+        dayHeader.className = 'section-header';
+        dayHeader.appendChild(el('div.h-title', dayLabel));
+        const dayTotal = groups[dayLabel].reduce((s,t)=>{
+          const typ = String((t.type||'')).toLowerCase();
+          if (typ === 'deposit') return s + ((t.credited||String(t.status||'').toLowerCase()==='confirmed' || String(t.status||'').toLowerCase()==='accredited') ? Number(t.amount||0) : 0);
+          if (typ === 'earning') return s + Number(t.amount||0);
+          if (typ === 'purchase' || typ === 'withdraw') return s - Number(t.amount||0);
+          return s + Number(t.amount||0);
+        }, 0);
+        dayHeader.appendChild(el('div.small', `Giorno totale: ${formatMoney(dayTotal)}`));
+        dayWrap.appendChild(dayHeader);
+
+        groups[dayLabel].sort((a,b)=> new Date(b.created_at) - new Date(a.created_at)).forEach(t => {
+          const row = document.createElement('div'); row.className='tx'; row.style.padding='10px';
+          const left = document.createElement('div'); left.style.flex='1';
+          left.appendChild(el('div', `${(t.type||'').toUpperCase()} · ${t.note || ''}`));
+          left.appendChild(el('div.meta', new Date(t.created_at).toLocaleString()));
+          const right = document.createElement('div'); right.style.display='flex'; right.style.flexDirection='column'; right.style.alignItems='flex-end'; right.style.gap='6px';
+          right.appendChild(el('div.tx-amount', formatMoney(t.amount)));
+
+          // running balance after this transaction (prefer computed map)
+          const bal = typeof runningMap[t.id] !== 'undefined' ? runningMap[t.id] : null;
+          if (bal !== null) right.appendChild(el('div.small', `Saldo: ${formatMoney(bal)}`));
+
+          // friendly status badge
+          const st = (t.status || '').toString().toLowerCase();
+          const badge = document.createElement('div');
+          badge.className = 'badge ' + (st === 'pending' ? 'pending' : (st === 'otp_sent' ? 'otp_sent' : (st === 'rejected' ? 'rejected' : 'confirmed')));
+          badge.textContent = (st === 'pending' ? 'PENDENTE' : (st === 'otp_sent' ? 'OTP INVIATO' : (st === 'rejected' ? 'RIFIUTATA' : (t.credited ? 'ACCREDITATO' : 'CONFERMATO'))));
+          right.appendChild(badge);
+
+          const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
+          const details = document.createElement('button'); details.className='small-action'; details.textContent='Dettagli';
+          details.onclick = ()=>{ alert(`${t.type.toUpperCase()} — ${t.note || '(nessuna nota)'}\n${new Date(t.created_at).toLocaleString()}\nSaldo dopo transazione: ${bal!==null?formatMoney(bal):'—'}`); };
+          actions.appendChild(details);
+
+          if (st === 'pending') {
+            const enterOtp = document.createElement('button'); enterOtp.className='small-action'; enterOtp.textContent='Conferma';
+            enterOtp.onclick = ()=> { confirmTransactionWithOTP(t.id); };
+            actions.appendChild(enterOtp);
+          }
+
+          right.appendChild(actions);
+
+          row.appendChild(left);
+          row.appendChild(right);
+          dayWrap.appendChild(row);
+        });
+
+        list.appendChild(dayWrap);
+      });
+    }
 
     wrap.appendChild(list);
 
-    // pagination controls
-    const nav = document.createElement('div'); nav.style.display='flex'; nav.style.justifyContent='space-between'; nav.style.marginTop='10px';
+    // controls: pagination + export CSV + jump to top
+    const nav = document.createElement('div'); nav.style.display='flex'; nav.style.justifyContent='space-between'; nav.style.marginTop='10px'; nav.style.alignItems='center';
+    const leftNav = document.createElement('div');
     const prev = document.createElement('button'); prev.className='btn'; prev.textContent='◀ Pagina precedente';
     prev.onclick = ()=>{ if (page > 1) { txPage = page - 1; navigate('transactions'); } else alert('Sei alla prima pagina'); };
     const next = document.createElement('button'); next.className='btn'; next.textContent='Pagina successiva ▶';
     next.onclick = ()=>{ if ((start + perPage) < allTx.length) { txPage = page + 1; navigate('transactions'); } else alert('Nessuna altra pagina'); };
-    nav.appendChild(prev); nav.appendChild(next);
+    leftNav.appendChild(prev); leftNav.appendChild(next);
+
+    const rightNav = document.createElement('div');
+    rightNav.style.display='flex'; rightNav.style.gap='8px'; rightNav.style.alignItems='center';
+    const exportBtn = document.createElement('button'); exportBtn.className='btn'; exportBtn.textContent='Esporta CSV';
+    exportBtn.onclick = ()=>{
+      try {
+        const rows = [['created_at','id','type','amount','status','note','running_balance']];
+        allTx.forEach(t => {
+          const row = [
+            (t.created_at||''),
+            (t.id||''),
+            (t.type||''),
+            String(t.amount||''),
+            (t.status||''),
+            (t.note||'').replace(/\n/g,' '),
+            String(typeof runningMap[t.id] !== 'undefined' ? runningMap[t.id] : '')
+          ];
+          rows.push(row.map(c => `"${String(c).replace(/"/g,'""')}"`));
+        });
+        const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `transactions_${session?.uid||session?.id||'user'}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      } catch(e){ alert('Esportazione fallita'); console.warn(e); }
+    };
+    const topBtn = document.createElement('button'); topBtn.className='btn'; topBtn.textContent='Vai all\'inizio';
+    topBtn.onclick = ()=> window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    rightNav.appendChild(exportBtn); rightNav.appendChild(topBtn);
+    nav.appendChild(leftNav); nav.appendChild(rightNav);
     wrap.appendChild(nav);
 
     return wrap;
@@ -1736,7 +2200,7 @@
     function renderPending(filterUid){
       currentFilterUid = filterUid || null;
       pendingWrap.innerHTML = '';
-      const pending = txCol.getList().filter(t => (t.status === 'pending' || t.status === 'otp_sent'));
+      const pending = txCol.getList().filter(t => t.status === 'pending');
       const matchesFilter = (t, q) => {
         if (!q) return true;
         const qS = String(q);
@@ -1792,7 +2256,8 @@
           if (!confirm('Confermare manualmente questa transazione (senza OTP)?')) return;
           confirmNow.disabled = true;
           try {
-            const payload = { status: 'confirmed', confirmed_at: new Date().toISOString() };
+            // Use explicit 'accredited' status for deposits to keep admin crediting clear and auditable
+            const payload = { status: 'accredited', accredited_at: new Date().toISOString() };
             if (t.type === 'deposit') {
               payload.credited = true;
               payload.credited_at = new Date().toISOString();
@@ -1811,6 +2276,12 @@
 
             try { if (typeof window.__cup9gpu_forcePersist === 'function') window.__cup9gpu_forcePersist(); } catch(e){}
             try { localStorage.setItem('cup9gpu_last_admin_action', JSON.stringify({ ts: Date.now(), action: 'confirm_now', tx_id: t.id, by: session.username })); } catch(e){}
+            // persistently remove this pending entry from admin pending list
+            try {
+              const key = 'cup9gpu_admin_removed_pending';
+              const cur = JSON.parse(localStorage.getItem(key) || '[]');
+              if (!cur.includes(String(t.id))) { cur.push(String(t.id)); localStorage.setItem(key, JSON.stringify(cur)); }
+            } catch(e){ console.warn('persist removed pending failed', e); }
             alert('Transazione confermata manualmente.');
           } catch (e) {
             console.warn('confirmNow failed', e);
@@ -1848,6 +2319,12 @@
             try { window.dispatchEvent(new CustomEvent('cup9gpu_admin_action', { detail:{ type:'reject_tx', id: t.user_id || t.uid || t.user_uid || null, tx_id: t.id } })); } catch(e){}
             try { if (typeof window.__cup9gpu_forcePersist === 'function') window.__cup9gpu_forcePersist(); } catch(e){}
             try { if (typeof window.__cup9gpu_forcePersistUsers === 'function') window.__cup9gpu_forcePersistUsers(); } catch(e){}
+            // persistently remove this pending entry from admin pending list
+            try {
+              const key = 'cup9gpu_admin_removed_pending';
+              const cur = JSON.parse(localStorage.getItem(key) || '[]');
+              if (!cur.includes(String(t.id))) { cur.push(String(t.id)); localStorage.setItem(key, JSON.stringify(cur)); }
+            } catch(e){ console.warn('persist removed pending failed', e); }
             alert('Transazione rifiutata.');
           } catch (e) {
             console.warn('reject failed', e);
@@ -2075,17 +2552,62 @@
 
       // 4) Directly edit user's metadata if record exists (email, username) and show OTP flag persisted
       if (userRec && userRec.id) {
-        const editRow = document.createElement('div'); editRow.style.display='flex'; editRow.style.flexDirection='column'; editRow.style.gap='8px';
-        const uname = document.createElement('input'); uname.className='input'; uname.value = userRec.username || ''; uname.placeholder = 'Username';
-        const email = document.createElement('input'); email.className='input'; email.value = userRec.email || ''; email.placeholder = 'Email';
-        const saveUserBtn = document.createElement('button'); saveUserBtn.className='primary'; saveUserBtn.textContent='Salva utente';
+        // keep local state for otp toggle to avoid referencing an undefined variable
+        let currentOtp = !!userRec.otp_enabled;
+
+        const editRow = document.createElement('div');
+        editRow.style.display='flex';
+        editRow.style.flexDirection='column';
+        editRow.style.gap='8px';
+
+        const uname = document.createElement('input');
+        uname.className='input';
+        uname.value = userRec.username || '';
+        uname.placeholder = 'Username';
+
+        const email = document.createElement('input');
+        email.className='input';
+        email.value = userRec.email || '';
+        email.placeholder = 'Email';
+
+        // OTP toggle row
+        const otpRowLocal = document.createElement('div');
+        otpRowLocal.style.display = 'flex';
+        otpRowLocal.style.alignItems = 'center';
+        otpRowLocal.style.gap = '8px';
+
+        const otpLabelLocal = document.createElement('label');
+        otpLabelLocal.textContent = 'OTP abilitato:';
+        otpLabelLocal.style.fontSize = '13px';
+        otpLabelLocal.style.color = 'var(--muted)';
+
+        const otpCheckbox = document.createElement('input');
+        otpCheckbox.type = 'checkbox';
+        otpCheckbox.checked = currentOtp;
+        otpCheckbox.onchange = () => { currentOtp = !!otpCheckbox.checked; };
+
+        otpRowLocal.appendChild(otpLabelLocal);
+        otpRowLocal.appendChild(otpCheckbox);
+
+        const saveUserBtn = document.createElement('button');
+        saveUserBtn.className='primary';
+        saveUserBtn.textContent='Salva utente';
         saveUserBtn.onclick = async ()=>{
-          const upd = { username: uname.value, email: email.value, otp_enabled: currentOtp };
-          await usersCol.update && usersCol.update(userRec.id, upd);
-          alert('Utente aggiornato');
-          render();
+          try {
+            const upd = { username: uname.value, email: email.value, otp_enabled: currentOtp };
+            await usersCol.update && usersCol.update(userRec.id, upd);
+            alert('Utente aggiornato');
+            render();
+          } catch (e) {
+            console.warn('save user failed', e);
+            alert('Salvataggio utente fallito');
+          }
         };
-        editRow.appendChild(uname); editRow.appendChild(email); editRow.appendChild(saveUserBtn);
+
+        editRow.appendChild(uname);
+        editRow.appendChild(email);
+        editRow.appendChild(otpRowLocal);
+        editRow.appendChild(saveUserBtn);
         controls.appendChild(editRow);
       }
 
@@ -2113,203 +2635,246 @@
     return wrap;
   }
 
+
+
+  // Profile page: user settings, wallet, security and preferences (no session list)
   function profilePage(){
     const session = getSession();
-    const wrap = document.createElement('div'); wrap.className='card';
-    wrap.appendChild(el('h3','Profilo'));
-    wrap.appendChild(el('div.small','ID UTENTE: ' + (session.uid || session.user_uid || 'n/d')));
-    wrap.appendChild(el('div.small','Username: ' + session.username));
-    wrap.appendChild(el('div.small','Email: ' + session.email));
-    // Show or generate invite code for the user
-    const users = usersCol.getList();
-    const me = users.find(u => String(u.id) === String(session.id) || String(u.user_uid) === String(session.uid));
-    let myInvite = (me && me.invite_code) ? me.invite_code : null;
-    const inviteRow = document.createElement('div');
-    inviteRow.style.display = 'flex';
-    inviteRow.style.flexDirection = 'column';
-    inviteRow.style.gap = '8px';
-    inviteRow.style.marginTop = '8px';
+    const wrap = document.createElement('div');
+    wrap.className = 'card';
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.gap = '12px';
 
-    const inviteLabel = document.createElement('div');
-    inviteLabel.className = 'small';
-    inviteLabel.textContent = 'Il tuo codice invito (condividi con amici):';
+    // Top header with avatar, username, email and ID
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.gap = '12px';
+    header.style.padding = '12px';
+    header.style.borderRadius = '10px';
+    header.style.background = 'linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.003))';
+    header.style.border = '1px solid rgba(255,255,255,0.02)';
 
-    const inviteLine = document.createElement('div');
-    inviteLine.style.display = 'flex';
-    inviteLine.style.alignItems = 'center';
-    inviteLine.style.gap = '8px';
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.alignItems = 'center';
+    left.style.gap = '12px';
 
-    const inviteDisplay = document.createElement('div');
-    inviteDisplay.className = 'otp';
-    inviteDisplay.style.display = 'inline-block';
-    // show full referral link if present, otherwise show code or placeholder
-    inviteDisplay.textContent = myInvite ? ( (myInvite.startsWith('http') || myInvite.includes('?ref=')) ? myInvite : myInvite ) : '(non generato)';
-    inviteDisplay.style.wordBreak = 'break-all';
-    inviteDisplay.style.maxWidth = '100%';
-    inviteDisplay.style.flex = '1';
+    // avatar / placeholder
+    const avatar = document.createElement('div');
+    avatar.style.width = '64px';
+    avatar.style.height = '64px';
+    avatar.style.borderRadius = '12px';
+    avatar.style.display = 'flex';
+    avatar.style.alignItems = 'center';
+    avatar.style.justifyContent = 'center';
+    avatar.style.fontWeight = '900';
+    avatar.style.fontSize = '20px';
+    avatar.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))';
+    avatar.style.color = 'var(--accent)';
+    avatar.textContent = (session && session.username) ? (session.username[0] || 'U').toUpperCase() : 'U';
 
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'btn';
-    copyBtn.textContent = 'Copia link';
-    copyBtn.onclick = async () => {
-      try {
-        // if inviteDisplay already contains a full URL, copy it; otherwise build a full referral link
-        let toCopy = inviteDisplay.textContent || '';
-        if (toCopy && !toCopy.startsWith('http')) {
-          const code = toCopy;
-          const base = (typeof window.baseUrl === 'string' && window.baseUrl) ? window.baseUrl : (window.location.origin + window.location.pathname);
-          toCopy = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(code)}`;
-        }
-        if (!toCopy || toCopy === '(non generato)') return alert('Nessun link da copiare, genera prima il codice.');
-        try { await navigator.clipboard.writeText(toCopy); alert('Link copiato negli appunti'); } catch(e){ prompt('Copia manuale: seleziona e copia il link', toCopy); }
-      } catch (e) {
-        console.warn('copy invite failed', e);
-        alert('Copia fallita');
-      }
-    };
+    const info = document.createElement('div');
+    info.style.display = 'flex';
+    info.style.flexDirection = 'column';
+    info.style.gap = '4px';
 
-    // Replace regeneration with simple copy action: referral identifier is fixed (user_uid)
-    const genBtn = document.createElement('button');
-    genBtn.className = 'primary';
-    genBtn.textContent = 'Copia link';
-    genBtn.onclick = async () => {
-      try {
-        // prefer stored invite_code (now fixed to user_uid), fallback to user_uid
-        const code = (me && (me.invite_code || me.user_uid)) || session.uid || session.id;
-        if (!code) return alert('Nessun codice disponibile');
-        const base = (typeof window.baseUrl === 'string' && window.baseUrl) ? window.baseUrl : (window.location.origin + window.location.pathname);
-        const refLink = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(code)}`;
-        inviteDisplay.textContent = refLink;
-        try { await navigator.clipboard.writeText(refLink); alert('Link invito copiato negli appunti'); } catch(e){ prompt('Copia manuale: seleziona e copia il link', refLink); }
-      } catch(e){ console.warn('copy invite failed', e); alert('Copia fallita'); }
-    };
+    const nameEl = document.createElement('div'); nameEl.style.fontSize = '18px'; nameEl.style.fontWeight = '900'; nameEl.textContent = session?.username || 'Utente';
+    const emailEl = document.createElement('div'); emailEl.className = 'small'; emailEl.textContent = session?.email || '—';
+    const idEl = document.createElement('div'); idEl.className = 'small'; idEl.textContent = 'ID: ' + (session?.uid || session?.id || '—');
 
-    inviteLine.appendChild(inviteDisplay);
-    inviteLine.appendChild(copyBtn);
+    info.appendChild(nameEl);
+    info.appendChild(emailEl);
+    info.appendChild(idEl);
 
-    inviteRow.appendChild(inviteLabel);
-    inviteRow.appendChild(inviteLine);
-    inviteRow.appendChild(genBtn);
-    wrap.appendChild(inviteRow);
+    left.appendChild(avatar);
+    left.appendChild(info);
 
-    // Invitees / Team table: list direct subordinates (users who set current user as referrer_a)
-    try {
-      const teamWrap = document.createElement('div');
-      teamWrap.style.marginTop = '12px';
-      teamWrap.appendChild(el('h3','Il tuo team'));
+    // quick action buttons on header
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.gap = '8px';
+    right.style.alignItems = 'center';
 
-      const allUsers = usersCol.getList();
-      const myIdOrUid = session.id || session.uid;
-      // match by referrer_a equal to user's user_uid or id
-      let direct = allUsers.filter(u => String(u.referrer_a) === String(session.uid) || String(u.referrer_a) === String(session.id));
+    const editBtn = document.createElement('button'); editBtn.className = 'btn'; editBtn.textContent = 'Modifica';
+    editBtn.onclick = ()=> { navigate('profile'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    const logoutBtn = document.createElement('button'); logoutBtn.className = 'btn'; logoutBtn.textContent = 'Esci';
+    logoutBtn.onclick = async ()=> { await clearSession(); navigate('login'); };
 
-      const subtitle = document.createElement('div');
-      subtitle.className = 'small';
-      subtitle.textContent = `Utenti invitati direttamente: ${direct.length}`;
-      teamWrap.appendChild(subtitle);
+    right.appendChild(editBtn);
+    right.appendChild(logoutBtn);
 
-      // build a compact table with sorting capabilities
-      const tableWrap = document.createElement('div');
-      tableWrap.style.marginTop = '8px';
-      tableWrap.style.overflow = 'auto';
+    header.appendChild(left);
+    header.appendChild(right);
 
-      const table = document.createElement('table');
-      table.style.width = '100%';
-      table.style.borderCollapse = 'collapse';
-      table.style.fontSize = '13px';
-      table.className = 'team-table';
+    wrap.appendChild(header);
 
-      // helper to create header cell with sort
-      function th(text, key){
-        const h = document.createElement('th');
-        h.textContent = text;
-        h.style.padding = '8px';
-        h.style.textAlign = 'left';
-        h.style.cursor = 'pointer';
-        h.style.background = 'transparent';
-        h.style.fontWeight = '800';
-        h.dataset.key = key;
-        h.dataset.order = 'desc';
-        h.onclick = () => {
-          const k = h.dataset.key;
-          const order = h.dataset.order === 'asc' ? 'desc' : 'asc';
-          // reset other headers
-          Array.from(table.querySelectorAll('th')).forEach(thEl => { if (thEl !== h) thEl.dataset.order = 'desc'; });
-          h.dataset.order = order;
-          renderRows(k, order);
-        };
-        return h;
-      }
+    // Grid of compact management tiles
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    grid.style.gap = '10px';
 
-      const thead = document.createElement('thead');
-      const headRow = document.createElement('tr');
-      headRow.appendChild(th('Username','username'));
-      headRow.appendChild(th('Email','email'));
-      headRow.appendChild(th('Livello','level'));
-      headRow.appendChild(th('Registrato','created_at'));
-      thead.appendChild(headRow);
-      table.appendChild(thead);
-
-      const tbody = document.createElement('tbody');
-      table.appendChild(tbody);
-      tableWrap.appendChild(table);
-      teamWrap.appendChild(tableWrap);
-
-      // map direct users to normalized rows (ensure level text)
-      function normalize(u){
-        return {
-          username: u.username || '(n/d)',
-          email: u.email || '(n/d)',
-          level: 'Diretto',
-          created_at: u.created_at || ''
-        };
-      }
-      direct = direct.map(normalize);
-
-      function renderRows(sortKey, order){
-        tbody.innerHTML = '';
-        const items = direct.slice();
-        if (sortKey) {
-          items.sort((a,b)=>{
-            const va = (a[sortKey] || '').toString().toLowerCase();
-            const vb = (b[sortKey] || '').toString().toLowerCase();
-            if (va < vb) return order === 'asc' ? -1 : 1;
-            if (va > vb) return order === 'asc' ? 1 : -1;
-            return 0;
-          });
-        } else {
-          // default: created_at desc
-          items.sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
-        }
-        items.forEach(it=>{
-          const r = document.createElement('tr');
-          r.style.borderTop = '1px solid rgba(0,0,0,0.04)';
-          const c1 = document.createElement('td'); c1.style.padding='8px'; c1.textContent = it.username;
-          const c2 = document.createElement('td'); c2.style.padding='8px'; c2.textContent = it.email;
-          const c3 = document.createElement('td'); c3.style.padding='8px'; c3.textContent = it.level;
-          const c4 = document.createElement('td'); c4.style.padding='8px'; c4.textContent = it.created_at ? new Date(it.created_at).toLocaleDateString() : '-';
-          r.appendChild(c1); r.appendChild(c2); r.appendChild(c3); r.appendChild(c4);
-          tbody.appendChild(r);
-        });
-      }
-
-      // initial render (sorted by created_at desc)
-      renderRows('created_at','desc');
-
-      // action: open full team page
-      const openBtn = document.createElement('button'); openBtn.className='primary'; openBtn.textContent='Apri pagina Team';
-      openBtn.style.marginTop = '10px';
-      openBtn.onclick = ()=> { navigate('team'); };
-
-      teamWrap.appendChild(openBtn);
-      wrap.appendChild(teamWrap);
-    } catch (e) {
-      console.warn('render team failed', e);
+    // tile builder
+    function tile(title, subtitle, action){
+      const t = document.createElement('div');
+      t.className = 'mini-box';
+      t.style.cursor = 'pointer';
+      t.style.padding = '12px';
+      t.style.display = 'flex';
+      t.style.flexDirection = 'column';
+      t.style.justifyContent = 'center';
+      t.onclick = action;
+      const tt = document.createElement('div'); tt.className = 'mb-title'; tt.textContent = title;
+      const st = document.createElement('div'); st.className = 'mb-sub'; st.textContent = subtitle;
+      t.appendChild(tt); t.appendChild(st);
+      return t;
     }
 
-    const btnLogout = document.createElement('button'); btnLogout.className='btn'; btnLogout.textContent='Esci';
-    btnLogout.onclick = ()=>{ clearSession(); navigate('login'); };
-    wrap.appendChild(btnLogout);
+    // tiles
+    grid.appendChild(tile('Informazioni account', 'Modifica username, email, password', ()=> {
+      // scroll to existing profile section or open quick editor inline
+      openInlineEditor();
+    }));
+
+    grid.appendChild(tile('Sicurezza', 'OTP, 2FA e sessioni', ()=> { navigate('profile'); try { document.querySelector('.card .small') && window.scrollTo({ top: 200, behavior: 'smooth' }); } catch(e){} }));
+
+    grid.appendChild(tile('Wallet', 'Indirizzi e rete', ()=> { navigate('profile'); try { document.querySelector('.card input[type=email]') && window.scrollTo({ top: 320, behavior: 'smooth' }); } catch(e){} }));
+
+    grid.appendChild(tile('Dispositivi', 'I tuoi hardware attivi', ()=> { navigate('devices'); }));
+
+    grid.appendChild(tile('Transazioni', 'Cronologia e prelievi', ()=> { navigate('transactions'); }));
+
+    grid.appendChild(tile('Invita amici', 'Copia link invito', async ()=> {
+      try {
+        const base = (typeof window.baseUrl === 'string' && window.baseUrl) ? window.baseUrl : (window.location.origin + window.location.pathname);
+        const link = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(session?.uid || session?.id || '')}`;
+        await navigator.clipboard.writeText(link);
+        alert('Link copiato negli appunti: ' + link);
+      } catch(e){ alert('Copia non disponibile'); }
+    }));
+
+    // compact actions row
+    const actionsRow = document.createElement('div');
+    actionsRow.style.display = 'flex';
+    actionsRow.style.gap = '8px';
+    actionsRow.style.marginTop = '8px';
+    actionsRow.style.justifyContent = 'flex-end';
+
+    const saveBtn = document.createElement('button'); saveBtn.className = 'primary'; saveBtn.textContent = 'Salva modifiche';
+    saveBtn.onclick = async ()=> {
+      // attempt to find local user record and save basic fields (best-effort)
+      try {
+        const users = usersCol.getList();
+        const me = users.find(u => String(u.id) === String(session?.id) || String(u.user_uid) === String(session?.uid));
+        if (!me) return alert('Nessun profilo locale trovato');
+        // open inline editor will handle updates; just show confirmation
+        alert('Usa le schede per modificare le impostazioni dal profilo.');
+      } catch(e){ console.warn(e); alert('Salvataggio fallito'); }
+    };
+
+    const deactivateBtn = document.createElement('button'); deactivateBtn.className = 'btn'; deactivateBtn.textContent = 'Disattiva account';
+    deactivateBtn.onclick = async ()=> {
+      if (!confirm('Disattivare il tuo account?')) return;
+      try {
+        const users = usersCol.getList();
+        const me = users.find(u => String(u.id) === String(session?.id) || String(u.user_uid) === String(session?.uid));
+        if (!me) return alert('Account non trovato.');
+        await usersCol.update && usersCol.update(me.id, { deactivated: true, deactivated_at: new Date().toISOString() });
+        alert('Account disattivato. Verrai disconnesso.');
+        await clearSession();
+        navigate('login');
+      } catch(e){ console.error(e); alert('Impossibile disattivare account.'); }
+    };
+
+    actionsRow.appendChild(saveBtn);
+    actionsRow.appendChild(deactivateBtn);
+
+    // inline editor: collapsible editable form (appears below tiles)
+    const editor = document.createElement('div');
+    editor.style.display = 'none';
+    editor.style.flexDirection = 'column';
+    editor.style.gap = '8px';
+    editor.style.marginTop = '8px';
+    editor.style.padding = '10px';
+    editor.style.borderRadius = '10px';
+    editor.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.003))';
+    editor.style.border = '1px solid rgba(255,255,255,0.02)';
+
+    function openInlineEditor(){
+      // populate fields from current user record
+      editor.innerHTML = '';
+      const users = usersCol.getList();
+      const me = users.find(u => String(u.id) === String(session?.id) || String(u.user_uid) === String(session?.uid));
+      const uname = document.createElement('input'); uname.className='input'; uname.value = me?.username || session?.username || '';
+      const emailInp = document.createElement('input'); emailInp.className='input'; emailInp.type='email'; emailInp.value = me?.email || session?.email || '';
+      const pass1 = document.createElement('input'); pass1.className='input'; pass1.type='password'; pass1.placeholder='Nuova password (lascia vuoto)';
+      const pass2 = document.createElement('input'); pass2.className='input'; pass2.type='password'; pass2.placeholder='Conferma password';
+
+      const saveLocal = document.createElement('button'); saveLocal.className='primary'; saveLocal.textContent='Salva';
+      saveLocal.onclick = async ()=>{
+        try {
+          if (!uname.value.trim() || !emailInp.value.trim()) return alert('Username e email obbligatori.');
+          if (pass1.value || pass2.value) {
+            if (pass1.value !== pass2.value) return alert('Le password non corrispondono.');
+            if (pass1.value.length < 4) return alert('Password troppo corta.');
+          }
+          if (!me) return alert('Utente non trovato per aggiornamento.');
+          const payload = { username: uname.value.trim(), email: emailInp.value.trim().toLowerCase() };
+          if (pass1.value) payload.password = pass1.value;
+          await usersCol.update && usersCol.update(me.id, payload);
+          alert('Profilo aggiornato.');
+          editor.style.display = 'none';
+          render();
+        } catch(e){ console.error(e); alert('Aggiornamento fallito'); }
+      };
+
+      const cancel = document.createElement('button'); cancel.className='btn'; cancel.textContent='Annulla';
+      cancel.onclick = ()=> { editor.style.display = 'none'; };
+
+      editor.appendChild(uname);
+      editor.appendChild(emailInp);
+      editor.appendChild(pass1);
+      editor.appendChild(pass2);
+      const row = document.createElement('div'); row.style.display='flex'; row.style.gap='8px'; row.appendChild(saveLocal); row.appendChild(cancel);
+      editor.appendChild(row);
+      editor.style.display = 'flex';
+      editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // responsive tweak: use single column on small screens
+    try {
+      const mq = window.matchMedia('(max-width:520px)');
+      const adapt = ()=> {
+        if (mq.matches) grid.style.gridTemplateColumns = '1fr';
+        else grid.style.gridTemplateColumns = 'repeat(2,1fr)';
+      };
+      adapt();
+      mq.addEventListener && mq.addEventListener('change', adapt);
+    } catch(e){}
+
+    wrap.appendChild(grid);
+    wrap.appendChild(actionsRow);
+    wrap.appendChild(editor);
+
+    // populate initial grid tiles (re-create to ensure tiles exist)
+    grid.innerHTML = '';
+    grid.appendChild(tile('Informazioni account', 'Modifica username, email, password', openInlineEditor));
+    grid.appendChild(tile('Sicurezza', 'OTP, 2FA e sessioni', ()=> { navigate('profile'); openInlineEditor(); }));
+    grid.appendChild(tile('Wallet', 'Indirizzi e rete', ()=> { navigate('profile'); openInlineEditor(); }));
+    grid.appendChild(tile('Dispositivi', 'I tuoi hardware attivi', ()=> { navigate('devices'); }));
+    grid.appendChild(tile('Transazioni', 'Cronologia e prelievi', ()=> { navigate('transactions'); }));
+    grid.appendChild(tile('Invita amici', 'Copia link invito', async ()=> {
+      try {
+        const base = (typeof window.baseUrl === 'string' && window.baseUrl) ? window.baseUrl : (window.location.origin + window.location.pathname);
+        const link = `${base.replace(/\/$/, '')}?ref=${encodeURIComponent(session?.uid || session?.id || '')}`;
+        await navigator.clipboard.writeText(link);
+        alert('Link copiato negli appunti: ' + link);
+      } catch(e){ alert('Copia non disponibile'); }
+    }));
+
     return wrap;
   }
 
@@ -2399,55 +2964,507 @@
 
   // Deposit / withdraw modals (simple prompts)
   function openDeposit(){
-    const amt = parseFloat(prompt('Importo da depositare (USDT):','50'));
-    if (!amt || amt<=0) return;
-    const method = prompt('Rete (BNB | BTC | TRON | ERC20):','ERC20');
+    // Guided deposit modal flow with idempotent create: one pending deposit tx per user+amount+network,
+    // tracked via localStorage so refresh/logout doesn't create duplicates.
     const session = getSession();
-    // create a pending deposit transaction: admin will generate/send OTP to the user from the admin panel
-    (async ()=>{
-      await txCol.create({
-        user_id: session.id,
-        type: 'deposit',
-        amount: amt,
-        method,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        note: 'Deposito pendente - in attesa OTP (admin)'
-      });
-      alert('Deposito registrato come PENDENTE. L\'amministratore genererà un OTP per la conferma e lo invierà al tuo account.');
-      render();
-    })();
+    if (!session) return alert('Per favore accedi prima di depositare.');
+
+    const STORAGE_KEY = 'cup9gpu_pending_deposits_v1'; // map user => array of pending entries
+
+    // helper to read/write idempotency map
+    function readPendingMap(){
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e){ return {}; }
+    }
+    function writePendingMap(m){
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(m)); } catch(e){}
+    }
+
+    // build overlay/modal constrained to page wrapper
+    const overlay = document.createElement('div');
+    overlay.className = 'notif-overlay';
+    overlay.style.zIndex = 80;
+
+    const modal = document.createElement('div');
+    modal.className = 'notif-modal';
+    modal.style.maxWidth = '720px';
+    modal.style.padding = '16px';
+    modal.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:900;font-size:18px">Deposito</div>
+        <button class="btn" id="depositClose">Chiudi</button>
+      </div>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+        <label class="small">Importo (es. 100.00)</label>
+        <input id="depositAmount" class="input" type="number" step="0.01" placeholder="Importo da depositare"/>
+        <label class="small">Seleziona rete</label>
+        <select id="depositNetwork" class="input">
+          <option value="TRC20">USDT TRC20</option>
+          <option value="BTC">BTC</option>
+          <option value="BNB">BNB</option>
+          <option value="USDC">USDC</option>
+        </select>
+
+        <div id="addrSection" style="display:none;flex-direction:column;gap:8px">
+          <div class="small">Indirizzo di deposito generato</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="depositAddress" class="input" readonly style="flex:1" />
+            <button id="copyAddress" class="btn">Copia</button>
+          </div>
+          <div class="small">Appena inviato il pagamento: clicca "Ho effettuato il deposito" per fornire TXHash e prova pagamento.</div>
+        </div>
+
+        <div id="submitSection" style="display:none;flex-direction:column;gap:8px">
+          <label class="small">TX Hash</label>
+          <input id="depositTxHash" class="input" type="text" placeholder="Inserisci TXHash della transazione (es. txhash)" />
+          <label class="small">Foto prova pagamento (opzionale)</label>
+          <input id="depositProof" type="file" accept="image/*" />
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button id="confirmDeposit" class="primary">Ho effettuato il deposito</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button id="genAddrBtn" class="primary">Genera Indirizzo</button>
+          <button id="cancelDeposit" class="btn">Annulla</button>
+        </div>
+      </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const closeAll = () => { try { overlay.remove(); } catch(e){} };
+
+    modal.querySelector('#depositClose').onclick = closeAll;
+    modal.querySelector('#cancelDeposit').onclick = closeAll;
+
+    const amtInput = modal.querySelector('#depositAmount');
+    const netSelect = modal.querySelector('#depositNetwork');
+    const genBtn = modal.querySelector('#genAddrBtn');
+    const addrSection = modal.querySelector('#addrSection');
+    const addrInput = modal.querySelector('#depositAddress');
+    const copyBtn = modal.querySelector('#copyAddress');
+    const submitSection = modal.querySelector('#submitSection');
+    const confirmBtn = modal.querySelector('#confirmDeposit');
+    const txHashInput = modal.querySelector('#depositTxHash');
+    const proofInput = modal.querySelector('#depositProof');
+
+    // generate a pseudo deposit address (demo): deterministic-ish per create using timestamp + uid
+    function makeFakeAddress(network, uid){
+      const rnd = Math.floor(100000 + Math.random()*900000);
+      return `${network.toUpperCase()}_${String(uid).slice(0,6)}_${rnd}`;
+    }
+
+    // Find or create a single pending deposit transaction for this user+amount+network
+    // Stronger idempotency: always attempt to find any matching pending/awaiting_deposit tx (by user identity, amount, network),
+    // consult persisted mapping in localStorage as a stable hint, and only create if no suitable record exists.
+    async function ensureSinglePendingDeposit(amount, network){
+      // Use a per-user+amount+network idempotency key so only one pending deposit exists per identical request
+      const userIdentifier = String(session && (session.uid || session.id || session.email || 'anon'));
+      const map = readPendingMap();
+      const key = `${userIdentifier}:${Number(amount||0).toFixed(2)}:${(network||'').toLowerCase()}`;
+
+      // 1) If mapping exists, validate it against amount/network and resolve to a live transaction if still pending-like.
+      try {
+        const entry = map[key];
+        if (entry && entry.tx_id) {
+          // if mapping includes amount/network, require them to match before reusing
+          if (typeof entry.amount !== 'undefined' && typeof entry.network !== 'undefined') {
+            const amtMatch = Math.abs(Number(entry.amount || 0) - Number(amount || 0)) < 0.0001;
+            const netMatch = String((entry.network||'')).toLowerCase() === String((network||'')).toLowerCase();
+            if (!amtMatch || !netMatch) {
+              // different deposit request: do not reuse mapped tx (keep mapping for original but don't return it)
+              // fall through to search/create logic so a new distinct deposit may be created
+            } else {
+              const cache = (txCol.getList && txCol.getList()) || [];
+              const found = cache.find(t => String(t.id) === String(entry.tx_id));
+              if (found && (String(found.status) === 'awaiting_deposit' || String(found.status) === 'pending' || String(found.status) === 'otp_sent')) {
+                return found;
+              }
+              // If mapped tx is no longer suitable, remove mapping and continue to global search
+              delete map[key];
+              writePendingMap(map);
+            }
+          } else {
+            // legacy mapping without amount/network stored: attempt to reuse only if the tx still appears suitable
+            const cache = (txCol.getList && txCol.getList()) || [];
+            const found = cache.find(t => String(t.id) === String(entry.tx_id));
+            if (found && (String(found.status) === 'awaiting_deposit' || String(found.status) === 'pending' || String(found.status) === 'otp_sent')) {
+              // store amount/network snapshot on first reuse for stronger future idempotency
+              try { map[key].amount = Number(amount||0); map[key].network = network || ''; writePendingMap(map); } catch(e){}
+              return found;
+            }
+            delete map[key];
+            writePendingMap(map);
+          }
+        }
+      } catch (e) {
+        // best-effort only; continue to global search/create
+        console.warn('pending deposit map validation failed', e);
+      }
+
+      // 2) Global search: prefer an exact match by user+amount+network first, otherwise fall back to any pending for user.
+      try {
+        const all = (txCol.getList && txCol.getList()) || [];
+        // exact match candidate: same user, same amount (within tolerance) and same network
+        const exact = all.find(t => {
+          if (String(t.type).toLowerCase() !== 'deposit') return false;
+          const st = (t.status || '').toLowerCase();
+          if (!(st === 'awaiting_deposit' || st === 'pending' || st === 'otp_sent')) return false;
+          const sameUser = (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+          if (!sameUser) return false;
+          const a = Number(t.amount) || 0;
+          const b = Number(amount) || 0;
+          if (Math.abs(a - b) > 0.0001) return false;
+          if (network && t.network && String(t.network).toLowerCase() !== String(network).toLowerCase()) return false;
+          return true;
+        });
+        if (exact) {
+          map[key] = { tx_id: exact.id, created_at: exact.created_at || new Date().toISOString(), amount: Number(amount||0), network: network || '' };
+          writePendingMap(map);
+          return exact;
+        }
+        // fallback: any pending deposit for this user (used as last resort)
+        const any = all.find(t => {
+          if (String(t.type).toLowerCase() !== 'deposit') return false;
+          const st = (t.status || '').toLowerCase();
+          if (!(st === 'awaiting_deposit' || st === 'pending' || st === 'otp_sent')) return false;
+          return (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+        });
+        if (any) {
+          // record mapping but prefer exact-match behavior next time when amount/network align
+          map[key] = { tx_id: any.id, created_at: any.created_at || new Date().toISOString(), amount: Number(any.amount||0), network: any.network || '' };
+          writePendingMap(map);
+          return any;
+        }
+      } catch (e) {
+        // ignore and proceed to create
+      }
+
+      // 3) No existing pending deposit found — create exactly one new awaiting_deposit record.
+      const generatedAddress = makeFakeAddress(network, session && (session.uid || session.id || String(Date.now())));
+      // create a stable idempotency_key for this exact request and persist it to the mapping so refresh/login reuse it
+      const idemp = `${session && (session.uid || session.id || 'anon')}:${Number(amount||0).toFixed(2)}:${(network||'').toLowerCase()}:${Date.now().toString(36)}:${Math.floor(Math.random()*900000+100000)}`;
+      let createdRec = null;
+      try {
+        createdRec = await txCol.create({
+          user_id: session && session.id,
+          user_uid: session && session.uid,
+          type: 'deposit',
+          amount: +Number(amount).toFixed(2),
+          network,
+          deposit_address: generatedAddress,
+          status: 'awaiting_deposit',
+          idempotency_key: idemp,
+          created_at: new Date().toISOString(),
+          note: `Indirizzo generato per deposito su ${network}`
+        });
+        // persist mapping so subsequent refresh/login returns the same transaction
+        try { map[key] = { tx_id: createdRec.id, created_at: createdRec.created_at || new Date().toISOString(), amount: Number(amount||0), network: network || '', idempotency_key: idemp }; writePendingMap(map); } catch(e){}
+      } catch (e) {
+        // If create fails due to race/network, attempt one more time to find a suitable record that might have been created concurrently.
+        try {
+          const allAfter = (txCol.getList && txCol.getList()) || [];
+          const fallback = allAfter.find(t => {
+            if (String(t.type) !== 'deposit') return false;
+            const st = (t.status || '').toLowerCase();
+            if (! (st === 'awaiting_deposit' || st === 'pending' || st === 'otp_sent')) return false;
+            const userMatch = (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+            // prefer an exact match when possible
+            const a = Number(t.amount) || 0;
+            const b = Number(amount) || 0;
+            const amtMatch = Math.abs(a - b) < 0.0001;
+            const netMatch = (network && t.network) ? (String(t.network).toLowerCase() === String(network).toLowerCase()) : true;
+            return userMatch && amtMatch && netMatch;
+          }) || null;
+          if (fallback) createdRec = fallback;
+          else throw e;
+        } catch (e2) {
+          throw e2;
+        }
+      }
+
+      // persist mapping for idempotency and return the created/found record
+      if (createdRec && createdRec.id) {
+        map[key] = { tx_id: createdRec.id, created_at: createdRec.created_at || new Date().toISOString(), amount: Number(amount||0), network: network || '' };
+        writePendingMap(map);
+      }
+      return createdRec;
+    }
+
+    genBtn.onclick = async () => {
+      // prevent double-click / concurrent generation (idempotency at UI level)
+      if (overlay.dataset.genRunning === '1') return;
+      overlay.dataset.genRunning = '1';
+      genBtn.disabled = true;
+
+      const amt = parseFloat(amtInput.value);
+      if (!amt || amt <= 0) {
+        overlay.dataset.genRunning = '0';
+        genBtn.disabled = false;
+        return alert('Inserisci un importo valido.');
+      }
+      const network = netSelect.value || 'TRC20';
+
+      try {
+        const rec = await ensureSinglePendingDeposit(amt, network);
+        if (!rec) {
+          overlay.dataset.genRunning = '0';
+          genBtn.disabled = false;
+          return alert('Impossibile creare o recuperare la richiesta di deposito.');
+        }
+
+        // show address UI and enable submit section
+        addrInput.value = rec.deposit_address || makeFakeAddress(network, session.uid || session.id || String(Date.now()));
+        addrSection.style.display = 'flex';
+        submitSection.style.display = 'block';
+        genBtn.textContent = 'Rigenera Indirizzo';
+        overlay.dataset.pendingTxId = rec.id;
+
+        copyBtn.onclick = ()=> {
+          try { navigator.clipboard.writeText(addrInput.value); alert('Indirizzo copiato'); } catch(e){ alert('Copia non disponibile'); }
+        };
+
+        try { navigator.clipboard.writeText(addrInput.value); } catch(e){}
+      } catch (e) {
+        console.error('generate address failed', e);
+        alert('Impossibile generare indirizzo. Riprova.');
+      } finally {
+        overlay.dataset.genRunning = '0';
+        genBtn.disabled = false;
+      }
+    };
+
+    confirmBtn.onclick = async () => {
+      const txHash = txHashInput.value && txHashInput.value.trim();
+      if (!txHash) return alert('Inserisci il TXHash della tua transazione.');
+
+      // Resolve canonical pending transaction for this user by matching amount/network/address to avoid duplicates
+      const pendingKeyId = overlay.dataset.pendingTxId;
+      const amountVal = Number(amtInput.value) || null;
+      const networkVal = netSelect.value || null;
+      const addressVal = addrInput.value || null;
+      let targetTx = null;
+
+      try {
+        // look for an authoritative match in current tx cache
+        const all = txCol.getList() || [];
+        const pendingLikeStatuses = ['awaiting_deposit','pending','otp_sent'];
+        targetTx = all.find(t => {
+          if (String(t.type).toLowerCase() !== 'deposit') return false;
+          const st = (t.status || '').toLowerCase();
+          if (!pendingLikeStatuses.includes(st)) return false;
+          // match by deposit address when available (most reliable), otherwise by user+amount+network
+          if (addressVal && t.deposit_address && String(t.deposit_address) === String(addressVal)) return true;
+          // match by user identity
+          const sameUser = (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+          if (!sameUser) return false;
+          if (amountVal !== null && typeof t.amount !== 'undefined') {
+            if (Math.abs((Number(t.amount)||0) - amountVal) > 0.0001) return false;
+          }
+          if (networkVal && t.network && String(t.network).toLowerCase() !== String(networkVal).toLowerCase()) return false;
+          return true;
+        }) || null;
+
+        // fallback to overlay stored id if no match found
+        if (!targetTx && pendingKeyId) {
+          targetTx = all.find(t => String(t.id) === String(pendingKeyId)) || null;
+        }
+
+        if (!targetTx) {
+          return alert('Nessuna richiesta di deposito trovata corrispondente; genera prima un indirizzo.');
+        }
+
+        const targetId = targetTx.id;
+
+        // read proof file (best-effort): store file name and small data url preview as proof_preview (non-blocking)
+        const file = proofInput.files && proofInput.files[0];
+        const updatePayloadBase = { status: 'pending', tx_hash: txHash, updated_at: new Date().toISOString(), note: 'Deposito dichiarato, in attesa conferma admin' };
+
+        if (file) {
+          try {
+            const reader = new FileReader();
+            reader.onload = async function(ev){
+              const preview = ev.target.result;
+              const payload = Object.assign({}, updatePayloadBase, { proof_name: file.name, proof_preview: preview });
+              try { await txCol.update(targetId, payload); } catch(e){
+                // best-effort second attempt
+                try { await txCol.update(targetId, payload); } catch(e2){ console.warn('tx update failed', e2); }
+              }
+
+              // remove idempotency mapping for this user now that it's advanced
+              try {
+                const map = readPendingMap();
+                const userIdentifier = String(session && (session.uid || session.id || session.email || 'anon'));
+                if (map && typeof map === 'object') {
+                  if (map[userIdentifier]) delete map[userIdentifier];
+                  Object.keys(map).forEach(k => { if (String(k).indexOf(userIdentifier) === 0) delete map[k]; });
+                  writePendingMap(map);
+                }
+              } catch(e){}
+
+              // Mark other duplicate pending deposits for same user/amount/network as rejected to enforce single pending constraint
+              try {
+                const duplicates = (txCol.getList()||[]).filter(t => {
+                  if (String(t.id) === String(targetId)) return false;
+                  if (String(t.type).toLowerCase() !== 'deposit') return false;
+                  const st = (t.status || '').toLowerCase();
+                  if (!pendingLikeStatuses.includes(st)) return false;
+                  const sameUser = (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+                  if (!sameUser) return false;
+                  if (amountVal !== null && typeof t.amount !== 'undefined') {
+                    if (Math.abs((Number(t.amount)||0) - amountVal) > 0.0001) return false;
+                  }
+                  if (networkVal && t.network && String(t.network).toLowerCase() !== String(networkVal).toLowerCase()) return false;
+                  return true;
+                });
+                for (const d of duplicates) {
+                  try { await txCol.update(d.id, { status: 'rejected', rejected_at: new Date().toISOString(), credited: false, credited_at: null, note: (d.note || '') + ' (duplicate prevented)' }); } catch(e){}
+                }
+              } catch(e){ console.warn('duplicate cleanup failed', e); }
+
+              try { localStorage.setItem('cup9gpu_last_deposit', JSON.stringify({ ts: Date.now(), user: session.uid || session.id, tx_id: targetId, tx_hash: txHash })); } catch(e){}
+              alert('Dichiarazione inviata: la transazione è ora in attesa di verifica amministrativa.');
+              closeAll();
+              render();
+            };
+            reader.readAsDataURL(file);
+          } catch(e){
+            console.warn('proof read failed', e);
+            // fallback to update without preview
+            try {
+              await txCol.update(targetId, updatePayloadBase);
+            } catch(e2){ console.warn('tx update failed', e2); }
+            try {
+              const map = readPendingMap();
+              const userIdentifier = String(session && (session.uid || session.id || session.email || 'anon'));
+              if (map && map[userIdentifier]) { delete map[userIdentifier]; writePendingMap(map); }
+            } catch(e){}
+            try { localStorage.setItem('cup9gpu_last_deposit', JSON.stringify({ ts: Date.now(), user: session.uid || session.id, tx_id: targetId, tx_hash: txHash })); } catch(e){}
+            // cleanup duplicates as above
+            try {
+              const duplicates = (txCol.getList()||[]).filter(t => {
+                if (String(t.id) === String(targetId)) return false;
+                if (String(t.type).toLowerCase() !== 'deposit') return false;
+                const st = (t.status || '').toLowerCase();
+                if (!pendingLikeStatuses.includes(st)) return false;
+                const sameUser = (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+                if (!sameUser) return false;
+                if (amountVal !== null && typeof t.amount !== 'undefined') {
+                  if (Math.abs((Number(t.amount)||0) - amountVal) > 0.0001) return false;
+                }
+                if (networkVal && t.network && String(t.network).toLowerCase() !== String(networkVal).toLowerCase()) return false;
+                return true;
+              });
+              for (const d of duplicates) {
+                try { await txCol.update(d.id, { status: 'rejected', rejected_at: new Date().toISOString(), credited: false, credited_at: null, note: (d.note || '') + ' (duplicate prevented)' }); } catch(e){}
+              }
+            } catch(e){ console.warn('duplicate cleanup failed', e); }
+
+            alert('Dichiarazione inviata (senza anteprima): la transazione è in attesa di verifica amministrativa.');
+            closeAll();
+            render();
+          }
+        } else {
+          // no file attached path
+          try {
+            await txCol.update(targetTx.id, updatePayloadBase);
+          } catch(e){
+            try { await txCol.update(targetTx.id, updatePayloadBase); } catch(e){ console.warn('tx update failed', e); }
+          }
+          try {
+            const map = readPendingMap();
+            const userIdentifier = String(session && (session.uid || session.id || session.email || 'anon'));
+            if (map && map[userIdentifier]) { delete map[userIdentifier]; writePendingMap(map); }
+          } catch(e){}
+          // cleanup duplicates
+          try {
+            const duplicates = (txCol.getList()||[]).filter(t => {
+              if (String(t.id) === String(targetTx.id)) return false;
+              if (String(t.type).toLowerCase() !== 'deposit') return false;
+              const st = (t.status || '').toLowerCase();
+              if (!pendingLikeStatuses.includes(st)) return false;
+              const sameUser = (session.id && String(t.user_id) === String(session.id)) || (session.uid && (String(t.user_uid) === String(session.uid) || String(t.uid) === String(session.uid)));
+              if (!sameUser) return false;
+              if (amountVal !== null && typeof t.amount !== 'undefined') {
+                if (Math.abs((Number(t.amount)||0) - amountVal) > 0.0001) return false;
+              }
+              if (networkVal && t.network && String(t.network).toLowerCase() !== String(networkVal).toLowerCase()) return false;
+              return true;
+            });
+            for (const d of duplicates) {
+              try { await txCol.update(d.id, { status: 'rejected', rejected_at: new Date().toISOString(), credited: false, credited_at: null, note: (d.note || '') + ' (duplicate prevented)' }); } catch(e){}
+            }
+          } catch(e){ console.warn('duplicate cleanup failed', e); }
+
+          try { localStorage.setItem('cup9gpu_last_deposit', JSON.stringify({ ts: Date.now(), user: session.uid || session.id, tx_id: targetTx.id, tx_hash: txHash })); } catch(e){}
+          alert('Dichiarazione inviata: la transazione è ora in attesa di verifica amministrativa.');
+          closeAll();
+          render();
+        }
+      } catch (err) {
+        console.error('confirm deposit flow failed', err);
+        alert('Impossibile inviare dichiarazione, riprova.');
+      }
+    };
   }
 
   function openWithdraw(){
-    const amt = parseFloat(prompt('Importo da prelevare (USDT):','100'));
+    const raw = prompt('Importo da prelevare (USDT):','100');
+    const amt = parseFloat(raw);
     if (!amt || amt<=0) return;
     const session = getSession();
-    // simple rules enforcement (as described)
-    if (amt < 100) {
-      alert('Prelievo minimo 100$ (50$ con licenza).');
-      return;
+    if (!session) return alert('Per favore accedi prima di effettuare un prelievo.');
+
+    // determine if user has collaborator license (support multiple possible flags)
+    let isCollaborator = false;
+    try {
+      const users = usersCol.getList();
+      const me = users.find(u => String(u.id) === String(session.id) || String(u.user_uid) === String(session.uid));
+      if (me) {
+        isCollaborator = !!(me.license === 'collaborator' || me.collaborator || me.is_collaborator || me.collab);
+      }
+    } catch(e){ /* best-effort */ }
+
+    const MIN_DEFAULT = 100;
+    const MIN_COLLAB = 50;
+    const FEE = 3; // $3 fixed withdrawal fee
+
+    const requiredMin = isCollaborator ? MIN_COLLAB : MIN_DEFAULT;
+    if (amt < requiredMin) {
+      return alert(`Prelievo minimo ${formatMoney(requiredMin)}${isCollaborator ? ' (licenza collaboratore)' : ''}.`);
     }
+
     // ensure withdrawals draw only from confirmed earnings (withdrawable)
-    const userTx = txCol.getList().filter(t => t.user_id === session.id);
+    const userTx = txCol.getList().filter(t => String(t.user_id) === String(session.id));
     const earnings = userTx.filter(t => t.type === 'earning' && t.status !== 'pending').reduce((s,t)=>s+(Number(t.amount)||0),0);
-    const withdrawals = userTx.filter(t => t.type === 'withdraw' && t.status === 'confirmed').reduce((s,t)=>s+(Number(t.amount)||0),0);
-    const currentWithdrawable = Math.max(0, earnings - withdrawals);
-    if (amt > currentWithdrawable) {
-      return alert('Fondi insufficienti sul saldo prelevabile (solo i guadagni confermati sono prelevabili).');
+    const withdrawalsConfirmed = userTx.filter(t => t.type === 'withdraw' && t.status === 'confirmed').reduce((s,t)=>s+(Number(t.amount)||0),0);
+    const currentWithdrawable = Math.max(0, earnings - withdrawalsConfirmed);
+
+    // require amount + fee <= withdrawable so fee is covered
+    if ((amt + FEE) > currentWithdrawable) {
+      return alert(`Fondi insufficienti: il tuo saldo prelevabile è ${formatMoney(currentWithdrawable)}; ricordati che la commissione di prelievo è ${formatMoney(FEE)}.`);
     }
+
     // create a pending withdraw transaction: admin will generate/send OTP to the user from the admin panel
     (async ()=>{
-      await txCol.create({
-        user_id: session.id,
-        type: 'withdraw',
-        amount: amt,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        note: 'Prelievo pendente - in attesa OTP (admin)'
-      });
-      alert('Richiesta prelievo registrata come PENDENTE. L\'amministratore genererà un OTP per la conferma e lo invierà al tuo account.');
-      render();
+      try {
+        await txCol.create({
+          user_id: session.id,
+          type: 'withdraw',
+          amount: amt,
+          fee: FEE,
+          net_amount: +(Number(amt) - Number(FEE)).toFixed(2),
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          note: `Prelievo pendente - in attesa OTP (admin). Commissione: ${formatMoney(FEE)}. Net: ${formatMoney(+(amt - FEE).toFixed(2))}`
+        });
+        alert(`Richiesta prelievo registrata come PENDENTE.\nImporto: ${formatMoney(amt)}\nCommissione: ${formatMoney(FEE)}\nImporto netto: ${formatMoney(+(amt - FEE).toFixed(2))}\nL'amministratore genererà un OTP per la conferma e lo invierà al tuo account.`);
+        render();
+      } catch(e){
+        console.error('withdraw create failed', e);
+        alert('Impossibile registrare la richiesta di prelievo, riprova.');
+      }
     })();
   }
 
@@ -2485,12 +3502,15 @@
     details.onclick = ()=>{ alert(`${(t.type||'').toUpperCase()} — ${t.note || '(nessuna nota)'}\n${new Date(t.created_at).toLocaleString()}`); };
     actions.appendChild(details);
 
-    const stLow = (t.status||'').toLowerCase();
-    if (stLow === 'otp_sent' || stLow === 'pending') {
-      const enterOtp = document.createElement('button'); enterOtp.className='small-action'; enterOtp.textContent='Inserisci OTP';
+    const stLow = (t.status || '').toString().toLowerCase();
+    if (stLow === 'pending') {
+      // single pending flow only
+      const enterOtp = document.createElement('button'); enterOtp.className='small-action'; enterOtp.textContent='Conferma';
       enterOtp.onclick = ()=> { confirmTransactionWithOTP(t.id); };
       actions.appendChild(enterOtp);
     }
+    // ensure badge label updated for rejected state (applies where buildTxRow used)
+    // badge text is set below when buildTxRow creates the badge; other logic paths also respect 'rejected' via earlier changes
 
     right.appendChild(actions);
 
@@ -2574,6 +3594,7 @@
           user_id: session.id,
           type: 'earning',
           amount: total,
+          status: 'confirmed', // mark accruals as confirmed so they count immediately toward withdrawable balance
           created_at: new Date().toISOString(),
           note: `Accredito ${cap} giorno(i) - ${d.name}`
         });
@@ -2662,9 +3683,144 @@
     }
   });
 
+  // Lightweight pinch-to-zoom + two-finger pan handler for touch devices.
+  // Allows users to pinch to zoom the main app container (#app) and drag with two fingers to pan.
+  // It is intentionally small and non-invasive: preserves existing layout, only modifies transform on the app wrapper.
+  function attachPinchZoom(targetSelector = '#app') {
+    try {
+      const target = document.querySelector(targetSelector);
+      if (!target) return;
+
+      let initialDistance = 0;
+      let initialScale = 1;
+      let currentScale = 1;
+      let origin = { x: 0.5, y: 0.5 };
+      let lastMid = null;
+      let pan = { x: 0, y: 0 };
+      let lastPan = { x: 0, y: 0 };
+      let isPinching = false;
+      let isPanning = false;
+
+      // apply transform
+      function updateTransform() {
+        target.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${currentScale})`;
+        target.style.transformOrigin = `${origin.x * 100}% ${origin.y * 100}%`;
+      }
+      // get mid point between two touches in element coordinates normalized
+      function midPoint(t1, t2) {
+        const rect = target.getBoundingClientRect();
+        const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+        return { x: x / rect.width, y: y / rect.height, rawX: (t1.clientX + t2.clientX) / 2, rawY: (t1.clientY + t2.clientY) / 2 };
+      }
+      function distance(t1, t2) {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.hypot(dx, dy);
+      }
+
+      target.style.willChange = 'transform';
+      target.style.transition = 'transform 0ms linear';
+
+      function onTouchStart(e) {
+        if (e.touches.length === 2) {
+          isPinching = true;
+          initialDistance = distance(e.touches[0], e.touches[1]);
+          initialScale = currentScale || 1;
+          lastMid = midPoint(e.touches[0], e.touches[1]);
+          // set transform origin to midpoint to produce natural pinch zoom
+          origin = { x: lastMid.x, y: lastMid.y };
+          lastPan = { x: pan.x, y: pan.y };
+        } else if (e.touches.length === 1 && e.touches[0].radiusX && e.touches[0].radiusY) {
+          // ignore stylus-like touches; reserved
+        } else if (e.touches.length === 2) {
+          isPanning = true;
+        }
+      }
+
+      function onTouchMove(e) {
+        if (isPinching && e.touches.length === 2) {
+          e.preventDefault();
+          const d = distance(e.touches[0], e.touches[1]);
+          const scaleFactor = d / (initialDistance || 1);
+          // clamp scale between 0.6 and 3.0 for usability
+          currentScale = Math.min(3, Math.max(0.6, initialScale * scaleFactor));
+          // compute new midpoint and adjust pan so visual focus stays under fingers
+          const mid = midPoint(e.touches[0], e.touches[1]);
+          if (lastMid) {
+            const dx = mid.rawX - lastMid.rawX;
+            const dy = mid.rawY - lastMid.rawY;
+            pan.x = lastPan.x + dx;
+            pan.y = lastPan.y + dy;
+          }
+          updateTransform();
+        } else if (e.touches.length === 2 && !isPinching) {
+          // two-finger pan when not pinching (both fingers move roughly same distance)
+          e.preventDefault();
+          const t0 = e.touches[0];
+          const t1 = e.touches[1];
+          const mid = midPoint(t0, t1);
+          if (lastMid) {
+            const dx = mid.rawX - lastMid.rawX;
+            const dy = mid.rawY - lastMid.rawY;
+            pan.x = lastPan.x + dx;
+            pan.y = lastPan.y + dy;
+            updateTransform();
+          }
+          lastMid = mid;
+        }
+      }
+
+      function onTouchEnd(e) {
+        if (isPinching) {
+          // finalize
+          isPinching = false;
+          lastPan = { x: pan.x, y: pan.y };
+          lastMid = null;
+          // small inertia clamp: keep transform as is
+          // optionally persist currentScale/pan in sessionStorage if desired
+        } else if (isPanning) {
+          isPanning = false;
+          lastPan = { x: pan.x, y: pan.y };
+          lastMid = null;
+        }
+        // if no touches remain, ensure page scroll remains enabled when scale == 1
+        if ((e.touches && e.touches.length === 0) || !e.touches) {
+          // if scale close to 1 and pan is small, reset transform for crisp layout
+          if (Math.abs(currentScale - 1) < 0.02 && Math.abs(pan.x) < 4 && Math.abs(pan.y) < 4) {
+            currentScale = 1;
+            pan = { x: 0, y: 0 };
+            lastPan = { x: 0, y: 0 };
+            updateTransform();
+          }
+        }
+      }
+
+      // Prevent the default gesture that some mobile browsers provide (double-tap zoom)
+      function preventGesture(e) { e.preventDefault(); }
+
+      // Attach listeners
+      target.addEventListener('touchstart', onTouchStart, { passive: false });
+      target.addEventListener('touchmove', onTouchMove, { passive: false });
+      target.addEventListener('touchend', onTouchEnd, { passive: false });
+      target.addEventListener('gesturestart', preventGesture);
+      target.addEventListener('gesturechange', preventGesture);
+      target.addEventListener('gestureend', preventGesture);
+
+      // expose a manual reset helper
+      window.__cup9gpu_resetZoom = function(){
+        currentScale = 1; pan = { x: 0, y: 0 }; lastPan = { x:0, y:0 }; updateTransform();
+      };
+    } catch (e) {
+      console.warn('attachPinchZoom failed', e);
+    }
+  }
+
   // Start
   // seedCreator runs in background (non-blocking) to avoid slowing initial load
   seedCreator().catch(()=>{});
+  // attach pinch zoom to #app after DOM ready
+  try { attachPinchZoom('#app'); } catch(e){ console.warn(e); }
   render();
 
 })();

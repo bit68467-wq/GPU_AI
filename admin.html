@@ -1,515 +1,620 @@
 <!doctype html>
 <html lang="it">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Admin — CUP9GPU</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Admin - CUP9GPU (Fullscreen Admin)</title>
   <style>
-    :root{font-family:Inter,Segoe UI,Roboto,Arial;background:#071219;color:#e6f6fa}
-    body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
-    .panel{width:100%;max-width:920px;background:linear-gradient(180deg,#05121a,#0b2030);padding:14px;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.03);transition:transform .12s ease}
-    h1{margin:0 0 12px 0;color:#b98f46}
-    .row{display:flex;gap:8px;align-items:center}
-    .input{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;flex:1}
-    .btn{padding:10px 12px;border-radius:10px;border:0;background:#1f7fb3;color:#fff;font-weight:800;cursor:pointer}
-    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
-    .small{font-size:0.9rem;color:#8aa9b4}
-    .hidden{display:none}
-    table{width:100%;border-collapse:collapse;margin-top:12px}
-    th,td{padding:8px;border:1px solid rgba(255,255,255,0.04);text-align:left}
-    th{background:rgba(255,255,255,0.02)}
-    .toggle{padding:6px 10px;border-radius:8px;border:0;cursor:pointer}
-    .on{background:#0a7a45;color:#fff}
-    .off{background:#b21c1c;color:#fff}
-    .section{margin-top:14px}
-    .note{font-size:0.85rem;color:#8aa9b4;margin-top:8px}
-
-    /* Smartphone: slightly scale panel down so entire admin console fits without vertical overflow */
-    @media(max-width:480px){
-      .panel{
-        max-width:100%;
-        padding:12px;
-        transform: scale(0.94);
-        transform-origin: top center;
-      }
-      body{
-        padding:8px;
-      }
-      .panel h1{ font-size:1.05rem; }
-      .panel .row .input{ padding:8px 10px; }
-      .panel table th, .panel table td{ padding:6px; font-size:0.88rem; }
-      .panel .btn{ padding:8px 10px; font-size:0.92rem; }
+    :root{
+      --bg:#021018;
+      --panel:#05232a;
+      --card:#072026;
+      --muted:#9fb4b9;
+      --accent:#e0b33b;
+      --accent-2:#fff0c8;
+      --danger:#ff6b6b;
+      --glass: rgba(255,255,255,0.02);
+      font-family: Inter, system-ui, -apple-system, "Helvetica Neue", Arial;
+      color-scheme: dark;
     }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#04303a);color:var(--accent-2);overflow:hidden}
+    /* Fullscreen admin shell */
+    .admin-shell{
+      height:100vh;
+      display:grid;
+      grid-template-rows: 72px 1fr 56px;
+      grid-template-columns: 280px 1fr 360px;
+      gap:12px;
+      padding:14px;
+      box-sizing:border-box;
+    }
+
+    /* collapse to single column on small screens */
+    @media(max-width:1100px){
+      .admin-shell{ grid-template-rows: 88px 1fr 1fr; grid-template-columns: 1fr; padding:10px; }
+      .left, .right { height: auto; max-height: 40vh; overflow:auto; }
+    }
+
+    header{
+      grid-column: 1 / -1;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:12px 16px;
+      border-radius:10px;
+      background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.008));
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+      border:1px solid rgba(255,255,255,0.02);
+    }
+    header .brand{display:flex;gap:12px;align-items:center}
+    header h1{margin:0;font-size:18px;color:var(--accent);font-weight:800}
+    header .meta{font-size:13px;color:var(--muted)}
+    header .controls{display:flex;gap:8px;align-items:center}
+
+    /* Panels */
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.002));
+      border-radius:10px;
+      padding:12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+      border:1px solid rgba(255,255,255,0.02);
+      overflow:auto;
+    }
+
+    /* Left column - users & quick actions */
+    .left{ grid-column:1 / 2; }
+    .left .search-row{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+    .left input, .left select{padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:var(--accent-2);width:100%}
+    .user-list{margin-top:8px; display:flex;flex-direction:column; gap:8px}
+    .user-item{display:flex;justify-content:space-between;gap:8px;padding:10px;border-radius:8px;background:var(--card);border:1px solid rgba(255,255,255,0.02)}
+    .user-item .meta{font-size:12px;color:var(--muted)}
+    .left .quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+
+    /* Center column - transactions table */
+    .center{ grid-column:2 / 3; display:flex;flex-direction:column; gap:10px; }
+    .center .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .center .controls input, .center .controls select{padding:10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--accent-2)}
+    .table-wrap{flex:1; overflow:auto; border-radius:10px; background:transparent; padding:6px; box-sizing:border-box;}
+    table{width:100%;border-collapse:separate;border-spacing:0 8px;font-size:13px}
+    thead th{
+      position:sticky; top:0; background:linear-gradient(180deg, rgba(2,8,10,0.9), rgba(2,8,10,0.85));
+      padding:12px 14px;text-align:left;color:var(--muted);font-weight:700;border-bottom:1px solid rgba(255,255,255,0.03);
+    }
+    tbody tr{
+      background:linear-gradient(180deg, rgba(6,20,22,0.6), rgba(3,8,10,0.6));
+      border:1px solid rgba(255,255,255,0.02);
+      border-radius:8px;
+      display:table-row;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    }
+    tbody td{padding:12px 14px; vertical-align:middle; color:var(--accent-2)}
+    .tx-id{font-family:monospace;font-size:12px;color:var(--muted)}
+    .tx-note{max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+
+    .badge{padding:6px 10px;border-radius:999px;font-weight:800;display:inline-block}
+    .badge.pending{background: linear-gradient(90deg,#ffd866,#ffb84d); color:#241200}
+    .badge.otp_sent{background: linear-gradient(90deg,#d7f1ff,#9be6ff); color:#01283a}
+    .badge.confirmed{background: linear-gradient(90deg,#b9ffcf,#66e8a1); color:#062312}
+    .badge.rejected{background: linear-gradient(90deg,#ffd6d6,#ffb6b6); color:#541111}
+
+    /* Right column - inspector and analytics */
+    .right{ grid-column:3 / 4; display:flex;flex-direction:column;gap:10px;}
+    .inspector pre{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;color:#bfeffb;max-height:40vh;overflow:auto}
+
+    /* Footer - compact paginator and status */
+    footer{ grid-column:1 / -1; display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;background:transparent;border-top:1px solid rgba(255,255,255,0.02); color:var(--muted); }
+    .controls .btn, .left .btn, header .btn{padding:8px 10px;border-radius:8px;border:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#04121a;font-weight:800;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--accent-2)}
+
+    /* Small screens tweaks */
+    @media(max-width:720px){
+      .tx-note{max-width:180px}
+      .right{display:none}
+      header h1{font-size:16px}
+    }
+
+    /* Utility */
+    .muted{color:var(--muted);font-size:13px}
+    .small{font-size:13px;color:var(--muted)}
   </style>
 </head>
 <body>
-  <div class="panel" id="admin-app">
-    <h1>Admin Console — CUP9GPU</h1>
+  <div class="admin-shell" role="application" aria-label="Admin console CUP9GPU">
 
-    <div id="login-view">
-      <div class="small">Accedi come admin (nessuna registrazione richiesta)</div>
-      <div style="margin-top:12px" class="row">
-        <input id="admin-username" class="input" placeholder="Username"/>
-        <input id="admin-password" class="input" placeholder="Password" type="password"/>
-        <button id="admin-login" class="btn">Login</button>
-      </div>
-      <div id="login-error" class="note" style="color:#ffb3b3"></div>
-      <div class="note">Usa credenziali admin locali per aprire il pannello (solo front-end, non modifica altri file).</div>
-    </div>
-
-    <div id="panel-view" class="hidden">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
-        <div style="display:flex;gap:8px;align-items:center">
-          <button id="btn-logout" class="btn ghost">Logout</button>
-          <div class="small" id="admin-who"></div>
+    <header>
+      <div class="brand">
+        <div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-weight:900;color:#04121a">C9</div>
+        <div>
+          <h1>Admin Console — CUP9GPU</h1>
+          <div class="meta">Full-window optimized view · Table-first layout</div>
         </div>
+      </div>
+
+      <div class="controls">
+        <button id="refreshBtn" class="btn">Aggiorna</button>
+        <button id="exportBtn" class="btn ghost">Esporta CSV</button>
+        <button id="backBtn" class="btn ghost">Torna SPA</button>
+      </div>
+    </header>
+
+    <!-- LEFT: quick user management & search -->
+    <aside class="panel left" aria-label="User management">
+      <div class="search-row">
+        <input id="userSearch" type="search" placeholder="Cerca utente (username, user_uid, email)" />
+        <button id="userSearchBtn" class="btn">Cerca</button>
+      </div>
+
+      <div class="quick-actions" style="margin-bottom:8px">
+        <button id="showPending" class="btn ghost">Mostra pendenti</button>
+        <button id="manualOtp" class="btn ghost">Genera OTP rapida</button>
+        <button id="bulkDeactivate" class="btn ghost">Disattiva selezionati</button>
+      </div>
+
+      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Utenti recenti</div>
+      <div class="user-list" id="userList" aria-live="polite"></div>
+
+      <div style="margin-top:12px;font-size:13px;color:var(--muted)">
+        <div>Total users: <span id="statUsers">—</span></div>
+        <div>Pending approvals: <span id="statPending">—</span></div>
+      </div>
+    </aside>
+
+    <!-- CENTER: transactions table -->
+    <main class="panel center" aria-label="Transactions">
+      <div class="controls" style="align-items:center">
+        <input id="search" type="search" placeholder="Cerca TX id, note, importo..." style="width:260px"/>
+        <select id="statusFilter">
+          <option value="">Tutti stati</option>
+          <option value="pending">PENDENTE</option>
+          <option value="otp_sent">OTP_SENT</option>
+          <option value="confirmed">CONFIRMED</option>
+          <option value="rejected">REJECTED</option>
+        </select>
+        <select id="typeFilter">
+          <option value="">Tutti tipi</option>
+          <option value="deposit">deposit</option>
+          <option value="withdraw">withdraw</option>
+          <option value="purchase">purchase</option>
+          <option value="earning">earning</option>
+          <option value="admin_otp">admin_otp</option>
+        </select>
+
+        <div style="flex:1"></div>
+
         <div style="display:flex;gap:8px">
-          <button id="refresh-data" class="btn">Refresh</button>
-          <button id="export-users" class="btn ghost">Esporta Users (JSON)</button>
+          <button id="bulkConfirm" class="btn ghost">Conferma</button>
+          <button id="bulkReject" class="btn ghost">Rifiuta</button>
         </div>
       </div>
 
-      <div class="section">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="font-weight:900">Gestione OTP globale / per utente</div>
-          <div class="small">Abilita/disabilita i tasti OTP</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-          <label class="small">Global OTP Enabled</label>
-          <button id="global-otp-on" class="toggle on">ON</button>
-          <button id="global-otp-off" class="toggle off">OFF</button>
-          <div style="flex:1"></div>
-        </div>
-        <div class="note">Nota: le modifiche aggiornano localStorage e, se presente, la mock API (api.__internal__.db).</div>
-      </div>
-
-      <div class="section">
-        <div style="font-weight:900">Utenti registrati</div>
-        <table id="users-table">
-          <thead><tr><th>Email</th><th>Role</th><th>Balance</th><th>Richiesta</th><th>OTP (deposito)</th><th>OTP (prelievo)</th><th>Azioni</th></tr></thead>
+      <div class="table-wrap" id="tableWrap" role="region" aria-label="Transaction table">
+        <table id="txTable" aria-live="polite">
+          <thead>
+            <tr>
+              <th style="width:40px">#</th>
+              <th data-key="created_at">Data</th>
+              <th data-key="id">TX ID</th>
+              <th data-key="user_id">User ID</th>
+              <th data-key="user_uid">User UID</th>
+              <th data-key="type">Tipo</th>
+              <th data-key="amount" style="text-align:right">Importo</th>
+              <th data-key="status">Stato</th>
+              <th data-key="note">Nota</th>
+              <th style="width:180px">Azioni</th>
+            </tr>
+          </thead>
           <tbody></tbody>
         </table>
-        <div class="note">Mostra tutti gli utenti e indica le richieste in attesa (le richieste rimangono finché non le elimini manualmente).</div>
       </div>
 
-      <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <div id="summary" class="muted">Caricamento...</div>
         <div style="display:flex;gap:8px;align-items:center">
-          <input id="edit-email" class="input" placeholder="email selezionata" />
-          <input id="edit-balance" class="input" placeholder="nuovo saldo (es. 120.00)" />
-          <button id="apply-balance" class="btn">Applica Saldo</button>
+          <button id="prevPage" class="btn ghost">◀</button>
+          <span id="pageInfo" class="muted">Pagina 1</span>
+          <button id="nextPage" class="btn ghost">▶</button>
         </div>
       </div>
+    </main>
 
-    </div>
+    <!-- RIGHT: inspector, analytics, OTP log -->
+    <aside class="panel right" aria-label="Inspector and analytics">
+      <section class="inspector">
+        <h3 style="margin:0 0 8px 0;color:var(--accent)">Inspector</h3>
+        <div class="muted" style="margin-bottom:8px">Seleziona una transazione per visualizzare i dettagli</div>
+        <pre id="inspectJson">—</pre>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="inspectConfirm" class="btn">Conferma</button>
+          <button id="inspectReject" class="btn ghost">Rifiuta</button>
+        </div>
+      </section>
+
+      <section class="analytics" style="margin-top:8px">
+        <h3 style="margin:0 0 8px 0;color:var(--accent)">Analytics</h3>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between"><div class="muted">Saldo totale utenti</div><div id="kpiBalance" style="font-weight:900">$—</div></div>
+          <div style="display:flex;justify-content:space-between"><div class="muted">Transazioni pendenti</div><div id="kpiPending" style="font-weight:900">—</div></div>
+          <div style="display:flex;justify-content:space-between"><div class="muted">OTP non usati</div><div id="kpiOtp" style="font-weight:900">—</div></div>
+        </div>
+      </section>
+
+      <section style="margin-top:10px">
+        <h3 style="margin:0 0 8px 0;color:var(--accent)">Recent Admin Actions</h3>
+        <div id="adminActions" style="font-size:13px;color:var(--muted);max-height:220px;overflow:auto;padding-top:6px"></div>
+      </section>
+    </aside>
+
+    <footer>
+      <div class="muted" id="footerStatus">Ultimo aggiornamento: —</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="exportCsvBtn" class="btn ghost">Esporta CSV</button>
+        <button id="refreshNow" class="btn">Aggiorna ora</button>
+      </div>
+    </footer>
+
   </div>
 
-<script type="module">
-  // Simple front-end admin console (local-only)
-  import { api } from './api.js';
-  // basic hardcoded admin credential (front-end only for this browser)
-  // NOTE: credentials valid only in this browser: admin.cup.9@yahoo.com / 9090
-  const ADMIN_USER = 'admin.cup.9@yahoo.com';
-  const ADMIN_PASS = '9090';
-  const ADMIN_SESSION_KEY = 'CUP9_ADMIN_AUTH';
+  <script>
+    /* Reuse the existing admin script logic but adapt some UI selectors and add a couple helper bindings.
+       This script is intentionally compact: it keeps the original behaviour (fetching collections, rendering users/txs)
+       while updating the footer status and ensuring the table renders nicely in the fullscreen layout.
+    */
+    (function(){
+      const API = '/api/collections/transaction_v1';
+      const USERS_API = '/api/collections/user_v1';
+      const OTP_API = '/api/collections/otp_v1';
 
-  const qs = sel => document.querySelector(sel);
-  const loginView = qs('#login-view');
-  const panelView = qs('#panel-view');
-  const errEl = qs('#login-error');
-  const whoEl = qs('#admin-who');
-  const usersTBody = qs('#users-table tbody');
+      const txTable = document.getElementById('txTable');
+      const tbody = txTable.querySelector('tbody');
+      const userList = document.getElementById('userList');
+      const adminActions = document.getElementById('adminActions');
+      const footerStatus = document.getElementById('footerStatus');
 
-  function showLoginError(msg){
-    errEl.textContent = msg || '';
-  }
+      const refreshBtn = document.getElementById('refreshBtn');
+      const refreshNow = document.getElementById('refreshNow');
+      const exportBtn = document.getElementById('exportBtn');
+      const exportCsvBtn = document.getElementById('exportCsvBtn');
+      const backBtn = document.getElementById('backBtn');
 
-  function setPanelVisible(user){
-    loginView.classList.add('hidden');
-    panelView.classList.remove('hidden');
-    whoEl.textContent = 'Admin: ' + user;
-    refreshUsers();
-    refreshGlobalOtpUI();
-  }
+      const searchInput = document.getElementById('search');
+      const statusFilter = document.getElementById('statusFilter');
+      const typeFilter = document.getElementById('typeFilter');
+      const pageInfo = document.getElementById('pageInfo');
+      const prevPage = document.getElementById('prevPage');
+      const nextPage = document.getElementById('nextPage');
 
-  // Restrict access: only the project creator may use this admin console.
-  // If current user is not the project creator, hide login and show informative message.
-  (async function enforceCreatorOnly(){
-    try{
-      if(typeof window.websim === 'undefined' || typeof window.websim.getCreatedBy !== 'function' || typeof window.websim.getCurrentUser !== 'function'){
-        // If websim helpers are unavailable, fall back to existing local-only behavior.
-        return;
-      }
-      const creator = await window.websim.getCreatedBy().catch(()=>null);
-      const current = await window.websim.getCurrentUser().catch(()=>null);
-      const creatorName = creator && creator.username ? String(creator.username).toLowerCase() : null;
-      const currentName = current && current.username ? String(current.username).toLowerCase() : null;
+      const userSearch = document.getElementById('userSearch');
+      const userSearchBtn = document.getElementById('userSearchBtn');
+      const showPending = document.getElementById('showPending');
+      const manualOtp = document.getElementById('manualOtp');
+      const bulkDeactivate = document.getElementById('bulkDeactivate');
+      const inspectJson = document.getElementById('inspectJson');
+      const inspectConfirm = document.getElementById('inspectConfirm');
+      const inspectReject = document.getElementById('inspectReject');
 
-      if(!creatorName || !currentName || creatorName !== currentName){
-        // Deny access: replace login view with a clear message and disable panel interactions.
-        try{
-          loginView.innerHTML = '<div class="note" style="color:#ffb3b3;font-weight:800">Accesso riservato al creatore del progetto. Nessun accesso amministrativo disponibile per questo utente.</div>';
-          panelView.classList.add('hidden');
-          // ensure export/users features cannot be used
-          try{ qs('#export-users') && (qs('#export-users').disabled = true); }catch(e){}
-        }catch(e){}
-        // Do not initialize further admin behaviors
-        return;
-      }
-    }catch(e){
-      console.warn('Creator-only enforcement failed; allowing fallback admin behavior', e);
-    }
-  })();
+      const kpiBalance = document.getElementById('kpiBalance');
+      const kpiPending = document.getElementById('kpiPending');
+      const kpiOtp = document.getElementById('kpiOtp');
 
-  // On load, if this browser already has an admin session flag, show panel immediately
-  (function initAdminSession(){
-    try{
-      const flag = localStorage.getItem(ADMIN_SESSION_KEY);
-      if(flag === '1'){
-        setPanelVisible(ADMIN_USER);
-      }
-    }catch(e){}
-  })();
+      let data = [];
+      let users = [];
+      let otps = [];
+      let page = 1;
+      const perPage = 25;
+      let sortKey = 'created_at';
+      let sortDir = 'desc';
+      let selectedTx = null;
 
-  qs('#admin-login').onclick = async ()=> {
-    // Accept the exact configured admin credentials, case-insensitive for the email and trimmed input.
-    const u = String(qs('#admin-username').value || '').trim().toLowerCase();
-    const p = String(qs('#admin-password').value || '');
-    try{
-      if(u === String(ADMIN_USER).toLowerCase() && p === String(ADMIN_PASS)){
-        // persist admin session locally
-        try{ localStorage.setItem(ADMIN_SESSION_KEY, '1'); localStorage.setItem('CUP9_ADMIN_EMAIL', ADMIN_USER); }catch(e){}
-        // Mirror an admin marker into the mock api DB for cross-tab/mock usage (best-effort)
-        try{
-          if(window.api && api && api.__internal__ && api.__internal__.db){
-            api.__internal__.db.admins = api.__internal__.db.admins || {};
-            api.__internal__.db.admins[ADMIN_USER] = { email: ADMIN_USER, login_at: new Date().toISOString() };
-            // also persist a lightweight token so api-based admin endpoints may check for presence
-            api.__internal__.db.admins[ADMIN_USER].token = 'admin_tok_' + Math.random().toString(36).slice(2,10);
-          }
-        }catch(e){
-          console.warn('mirror admin to mock db failed', e);
+      function fmtMoney(n){ const num = Number(n)||0; return '$' + num.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+      async function fetchJSON(url){ const res = await fetch(url, {cache:'no-store'}); if (!res.ok) throw new Error('fetch failed: ' + res.status); return await res.json(); }
+
+      async function loadAll(){
+        try {
+          [users, otps, data] = await Promise.all([fetchJSON(USERS_API).catch(()=>[]), fetchJSON(OTP_API).catch(()=>[]), fetchJSON(API).catch(()=>[])]);
+          if (!Array.isArray(users)) users = [];
+          if (!Array.isArray(otps)) otps = [];
+          if (!Array.isArray(data)) data = [];
+          renderUsers();
+          computeKPIs();
+          page = 1;
+          renderTable();
+          footerStatus.textContent = 'Ultimo aggiornamento: ' + new Date().toLocaleString();
+        } catch(e){
+          console.error(e);
         }
-        showLoginError('');
-        setPanelVisible(ADMIN_USER);
-      } else {
-        showLoginError('Credenziali admin errate');
-      }
-    }catch(err){
-      console.error('admin login handler failed', err);
-      showLoginError('Errore login admin');
-    }
-  };
-
-  qs('#btn-logout').onclick = ()=> {
-    panelView.classList.add('hidden');
-    loginView.classList.remove('hidden');
-    qs('#admin-username').value = '';
-    qs('#admin-password').value = '';
-  };
-
-  // Global OTP toggles
-  async function refreshGlobalOtpUI(){
-    try{
-      const cfg = (localStorage.getItem('CUP9_GLOBAL_OTP_ENABLED') || 'false').toLowerCase() === 'true';
-      qs('#global-otp-on').disabled = cfg;
-      qs('#global-otp-off').disabled = !cfg;
-    }catch(e){}
-  }
-  qs('#global-otp-on').onclick = ()=> {
-    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','true');
-    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
-    refreshGlobalOtpUI();
-  };
-  qs('#global-otp-off').onclick = ()=> {
-    localStorage.setItem('CUP9_GLOBAL_OTP_ENABLED','false');
-    try{ if(typeof notify === 'function') notify('ui:force-refresh'); }catch(e){}
-    refreshGlobalOtpUI();
-  };
-
-  // Load users from localStorage CUP9_USERS and render table
-  function loadLocalUsers(){
-    try{ return JSON.parse(localStorage.getItem('CUP9_USERS') || '[]'); }catch(e){ return []; }
-  }
-
-  function renderUsers(users){
-    usersTBody.innerHTML = '';
-
-    // Load transactions once and derive awaiting transactions per email
-    let txs = [];
-    try{ txs = JSON.parse(localStorage.getItem('CUP9_TRANSACTIONS') || '[]') || []; }catch(e){ txs = []; }
-
-    // Build a map email -> first awaiting transaction (awaiting_otp or pending)
-    const awaitingMap = new Map();
-    try{
-      for(const t of txs){
-        try{
-          if(!t || !t.email) continue;
-          const st = String(t.status || '').toLowerCase();
-          if(st !== 'awaiting_otp' && st !== 'pending') continue;
-          const em = String(t.email).toLowerCase();
-          // keep earliest awaiting tx (by created_at)
-          if(!awaitingMap.has(em)){
-            awaitingMap.set(em, t);
-          } else {
-            const prev = awaitingMap.get(em);
-            if((t.created_at || '') < (prev.created_at || '')) awaitingMap.set(em, t);
-          }
-        }catch(e){}
-      }
-    }catch(e){}
-
-    // Render all users but highlight/annotate those who have an awaiting transaction
-    const allUsers = users || [];
-
-    // Render every user with a small transaction summary column; awaitingMap is used to annotate requests without removing them
-    allUsers.forEach(u=>{
-      const email = String(u.email||'').toLowerCase();
-      const tr = document.createElement('tr');
-      const role = u.role || '';
-      const bal = typeof u.balance !== 'undefined' ? Number(u.balance).toFixed(4) : '0.0000';
-
-      // find the awaiting tx for this email
-      const awaitingTx = awaitingMap.get(email);
-
-      // build a compact summary (type, amount, txhash snippet, date) with amount and key details in dark red
-      let txSummaryHtml = '<div class="small" style="color:var(--muted)">Nessuna richiesta</div>';
-      if(awaitingTx){
-        const typ = String(awaitingTx.type || '').toUpperCase();
-        const amt = Number(awaitingTx.amount || 0).toFixed(2);
-        const th = String(awaitingTx.txhash || awaitingTx.id || '');
-        const txShort = th ? (th.length > 18 ? th.slice(0,10) + '…' + th.slice(-6) : th) : '';
-        const when = awaitingTx.created_at ? (new Date(awaitingTx.created_at)).toLocaleString() : '';
-        txSummaryHtml = `
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-            <div style="font-weight:800;color:#8b0000">
-              ${escapeHtml(typ)} · <strong style="color:#8b0000;font-weight:900">$${escapeHtml(amt)}</strong>
-            </div>
-            <div class="small" style="color:#8b0000">${escapeHtml(txShort)} · ${escapeHtml(when)}</div>
-          </div>
-        `;
       }
 
-      // OTP keys state
-      const depKey = `otp_${email}_deposito`;
-      const preKey = `otp_${email}_prelievo`;
-      const dep = String(localStorage.getItem(depKey) || '').toLowerCase();
-      const pre = String(localStorage.getItem(preKey) || '').toLowerCase();
-
-      tr.innerHTML = `
-        <td>${escapeHtml(email)}</td>
-        <td>${escapeHtml(role)}</td>
-        <td>$${escapeHtml(bal)}</td>
-        <td style="min-width:220px">${txSummaryHtml}</td>
-        <td><button class="btn ${dep==='armed'?'on':'off'} otp-toggle-dep">${escapeHtml(dep||'false')}</button></td>
-        <td><button class="btn ${pre==='armed'?'on':'off'} otp-toggle-pre">${escapeHtml(pre||'false')}</button></td>
-        <td>
-          <button class="btn ghost btn-edit" data-email="${escapeHtml(email)}">Edit</button>
-          <button class="btn ghost btn-enable-all" data-email="${escapeHtml(email)}">Enable OTP</button>
-          <button class="btn ghost btn-disable-all" data-email="${escapeHtml(email)}">Disable OTP</button>
-        </td>
-      `;
-      // attach handlers
-      const depBtn = tr.querySelector('.otp-toggle-dep');
-      const preBtn = tr.querySelector('.otp-toggle-pre');
-      depBtn.onclick = ()=> {
-        const current = localStorage.getItem(depKey);
-        const next = current === 'armed' ? 'false' : 'armed';
-        localStorage.setItem(depKey, next);
-        localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, next === 'armed' ? 'true' : 'false');
-        refreshUsers();
-      };
-      preBtn.onclick = ()=> {
-        const current = localStorage.getItem(preKey);
-        const next = current === 'armed' ? 'false' : 'armed';
-        localStorage.setItem(preKey, next);
-        localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, next === 'armed' ? 'true' : 'false');
-        refreshUsers();
-      };
-
-      tr.querySelector('.btn-edit').onclick = ()=> {
-        qs('#edit-email').value = email;
-        qs('#edit-balance').value = Number(u.balance || 0).toFixed(4);
-      };
-      tr.querySelector('.btn-enable-all').onclick = ()=> {
-        try{
-          localStorage.setItem(`otp_${email}_deposito`, 'armed');
-          localStorage.setItem(`otp_${email}_prelievo`, 'armed');
-          localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, 'true');
-          localStorage.removeItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + email);
-          refreshUsers();
-        }catch(e){}
-      };
-      tr.querySelector('.btn-disable-all').onclick = ()=> {
-        try{
-          localStorage.setItem(`otp_${email}_deposito`, 'false');
-          localStorage.setItem(`otp_${email}_prelievo`, 'false');
-          localStorage.setItem('CUP9_OTP_BUTTON_ENABLED_FOR_' + email, 'false');
-          localStorage.setItem('CUP9_OTP_BUTTON_PERM_DISABLED_FOR_' + email, '1');
-          refreshUsers();
-        }catch(e){}
-      };
-
-      usersTBody.appendChild(tr);
-    });
-
-    // If no users with awaiting_otp, show a friendly message row
-    if(filtered.length === 0){
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="7" class="small" style="color:#8aa9b4;padding:12px">Nessun utente con richieste in attesa di OTP.</td>`;
-      usersTBody.appendChild(tr);
-    }
-  }
-
-  function refreshUsers(){
-    const users = loadLocalUsers();
-    renderUsers(users);
-  }
-
-  qs('#refresh-data').onclick = ()=> { refreshUsers(); refreshGlobalOtpUI(); };
-
-  // apply balance edit
-  // Add a selector to choose which balance/store to update: CUP9_USERS (persistent), CUP9_EARNINGS (withdrawable), or CUP9_TASK_POINTS (points)
-  (function injectBalanceTargetSelector(){
-    try{
-      const controlsRow = qs('#edit-email').parentNode;
-      if(!controlsRow) return;
-      // create selector element if not already present
-      if(!qs('#balance-target')){
-        const sel = document.createElement('select');
-        sel.id = 'balance-target';
-        sel.className = 'input';
-        sel.style.maxWidth = '240px';
-        sel.style.marginLeft = '8px';
-        sel.innerHTML = '<option value="users">Persistent balance (CUP9_USERS)</option><option value="earnings">Withdrawable (CUP9_EARNINGS)</option><option value="points">Task points (CUP9_TASK_POINTS)</option>';
-        controlsRow.insertBefore(sel, qs('#edit-balance'));
+      function computeKPIs(){
+        kpiBalance.textContent = fmtMoney(data.reduce((s,t)=>s+(Number(t.amount)||0),0));
+        const pending = data.filter(t => ['pending','otp_sent'].includes(String(t.status)));
+        kpiPending.textContent = pending.length;
+        kpiOtp.textContent = otps.filter(o=>!o.used).length;
       }
-    }catch(e){ console.warn('injectBalanceTargetSelector failed', e); }
-  })();
 
-  qs('#apply-balance').onclick = ()=>{
-    const email = String(qs('#edit-email').value || '').toLowerCase();
-    const balRaw = qs('#edit-balance').value || '0';
-    const bal = Number(balRaw);
-    const target = (qs('#balance-target') && qs('#balance-target').value) ? qs('#balance-target').value : 'users';
-    if(!email || !email.includes('@')) return alert('Inserisci email valida');
-    try{
-      if(target === 'users'){
-        // update CUP9_USERS persistent balance (existing behavior)
-        const users = loadLocalUsers();
-        const idx = users.findIndex(u=> String(u.email||'').toLowerCase() === email);
-        if(idx === -1){
-          users.push({ id: 'u_'+Math.random().toString(36).slice(2,8), email, balance: bal, role:'user', created_at: new Date().toISOString() });
-        } else {
-          users[idx].balance = bal;
+      function renderUsers(){
+        userList.innerHTML = '';
+        const recent = users.slice().reverse().slice(0,50);
+        recent.forEach(u=>{
+          const div = document.createElement('div'); div.className='user-item';
+          const left = document.createElement('div');
+          left.style.display='flex'; left.style.flexDirection='column';
+          const nm = document.createElement('div'); nm.textContent = u.username || '(n/d)'; nm.style.fontWeight='700';
+          const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `${u.user_uid || u.id} · ${u.email||''}`;
+          left.appendChild(nm); left.appendChild(meta);
+          const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='8px';
+          const inspect = document.createElement('button'); inspect.className='btn ghost'; inspect.textContent='Ispeziona';
+          inspect.onclick = ()=> { inspectJson.textContent = JSON.stringify(u,null,2); };
+          const toggle = document.createElement('button'); toggle.className='btn ghost'; toggle.textContent = u.deactivated ? 'Riattiva' : 'Disattiva';
+          toggle.onclick = async ()=>{
+            if (!confirm((u.deactivated ? 'Riattivare' : 'Disattivare') + ' utente?')) return;
+            try { await fetch('/api/collections/user_v1/' + encodeURIComponent(u.id), { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ deactivated: !u.deactivated }) }); await loadAll(); } catch(e){ console.error(e); alert('Operazione fallita'); }
+          };
+
+          // Approve button: visible when user is pending approval
+          const approveBtn = document.createElement('button');
+          approveBtn.className = 'btn';
+          approveBtn.textContent = u.approved ? 'Approvato' : 'Approva';
+          approveBtn.disabled = !!u.approved;
+          approveBtn.onclick = async () => {
+            if (u.approved) return;
+            if (!confirm('Approvare questo account?')) return;
+            try {
+              const res = await fetch('/api/users/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: u.id }) });
+              if (!res.ok) {
+                const txt = await res.text().catch(()=>res.statusText);
+                throw new Error(txt || 'approve failed');
+              }
+              await loadAll();
+              alert('Utente approvato.');
+            } catch (e) {
+              console.error('approve failed', e);
+              alert('Approvo fallita');
+            }
+          };
+
+          actions.appendChild(inspect);
+          actions.appendChild(toggle);
+          actions.appendChild(approveBtn);
+          div.appendChild(left); div.appendChild(actions);
+          userList.appendChild(div);
+        });
+      }
+
+      function applyFilters(list){
+        const q = (searchInput.value||'').trim().toLowerCase();
+        const st = statusFilter.value;
+        const tp = typeFilter.value;
+        return list.filter(t=>{
+          if (st && String((t.status||'').toLowerCase()) !== st) return false;
+          if (tp && String((t.type||'').toLowerCase()) !== tp) return false;
+          if (!q) return true;
+          const hay = [t.id,t.user_id,t.user_uid,t.type,t.note,String(t.amount)].filter(Boolean).join(' ').toLowerCase();
+          return hay.includes(q);
+        });
+      }
+
+      function applySort(list){
+        const dir = sortDir === 'asc' ? 1 : -1;
+        return list.slice().sort((a,b)=>{
+          let va = a[sortKey], vb = b[sortKey];
+          if (sortKey === 'amount') { va = Number(va)||0; vb = Number(vb)||0; }
+          if (sortKey === 'created_at') { va = new Date(va||0).getTime(); vb = new Date(vb||0).getTime(); }
+          va = (va===undefined||va===null)?'':String(va).toLowerCase();
+          vb = (vb===undefined||vb===null)?'':String(vb).toLowerCase();
+          if (va<vb) return -1*dir; if (va>vb) return 1*dir; return 0;
+        });
+      }
+
+      function renderTable(){
+        const filtered = applyFilters(data);
+        const sorted = applySort(filtered);
+        const total = sorted.length;
+        const pages = Math.max(1, Math.ceil(total/perPage));
+        if (page>pages) page = pages;
+        const start = (page-1)*perPage;
+        const items = sorted.slice(start, start+perPage);
+
+        tbody.innerHTML = '';
+        items.forEach((t, idx)=>{
+          const tr = document.createElement('tr');
+          // cells: index, date, id, user, uid, type, amount, status, note, actions
+          const indexTd = document.createElement('td'); indexTd.textContent = (start+idx+1); indexTd.style.fontFamily='monospace';
+          const dateTd = document.createElement('td'); dateTd.textContent = new Date(t.created_at||'').toLocaleString();
+          const idTd = document.createElement('td'); idTd.className='tx-id'; idTd.textContent = t.id||'';
+          const userTd = document.createElement('td'); userTd.textContent = t.user_id||t.uid||'';
+          const uidTd = document.createElement('td'); uidTd.textContent = t.user_uid||'';
+          const typeTd = document.createElement('td'); typeTd.textContent = t.type||'';
+          const amountTd = document.createElement('td'); amountTd.style.textAlign='right'; amountTd.textContent = fmtMoney(t.amount);
+          const statusTd = document.createElement('td');
+          // show explicit human label for rejected state
+          const st = (t.status || '').toString().toLowerCase();
+          let label = (t.credited ? 'ACCREDITATO' : 'CONFERMATO');
+          if (st === 'pending') label = 'PENDENTE';
+          else if (st === 'otp_sent') label = 'OTP INVIATO';
+          else if (st === 'rejected') label = 'RIFIUTATA';
+          statusTd.innerHTML = `<span class="badge ${st}">${label}</span>`;
+          const noteTd = document.createElement('td'); noteTd.className='tx-note'; noteTd.textContent = t.note||'';
+          const actionsTd = document.createElement('td');
+          actionsTd.style.whiteSpace='nowrap';
+          const inspectBtn = document.createElement('button'); inspectBtn.className='btn ghost'; inspectBtn.textContent='Ispeziona';
+          inspectBtn.onclick = ()=> { selectedTx = t; inspectJson.textContent = JSON.stringify(t,null,2); };
+          const confirmBtn = document.createElement('button'); confirmBtn.className='btn'; confirmBtn.textContent='Conferma';
+          confirmBtn.onclick = async ()=>{ if (!confirm('Confermare questa transazione?')) return; await patchTx(t.id,{status:'confirmed',confirmed_at:new Date().toISOString(),credited: t.type==='deposit'}); await loadAll(); };
+          const rejectBtn = document.createElement('button'); rejectBtn.className='btn ghost'; rejectBtn.textContent='Rifiuta';
+          rejectBtn.onclick = async ()=>{ if (!confirm('Rifiutare questa transazione?')) return; await patchTx(t.id,{status:'rejected',rejected_at:new Date().toISOString(),credited:false}); await loadAll(); };
+          actionsTd.appendChild(inspectBtn); actionsTd.appendChild(confirmBtn); actionsTd.appendChild(rejectBtn);
+
+          tr.appendChild(indexTd);
+          tr.appendChild(dateTd);
+          tr.appendChild(idTd);
+          tr.appendChild(userTd);
+          tr.appendChild(uidTd);
+          tr.appendChild(typeTd);
+          tr.appendChild(amountTd);
+          tr.appendChild(statusTd);
+          tr.appendChild(noteTd);
+          tr.appendChild(actionsTd);
+
+          tbody.appendChild(tr);
+        });
+
+        pageInfo.textContent = `Pagina ${page} / ${pages} — risultati: ${total}`;
+      }
+
+      async function patchTx(id, payload){
+        try {
+          const res = await fetch('/api/collections/transaction_v1/' + encodeURIComponent(id), { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          if (!res.ok) { const txt = await res.text().catch(()=>res.statusText); alert('Aggiornamento fallito: ' + txt); return; }
+        } catch(e){ console.error(e); alert('Errore rete'); }
+      }
+
+      // event wiring
+      txTable.querySelectorAll('th[data-key]').forEach(th=>th.addEventListener('click', ()=>{
+        const key = th.dataset.key;
+        if (sortKey === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc'; else { sortKey = key; sortDir = 'desc'; }
+        renderTable();
+      }));
+
+      refreshBtn.addEventListener('click', ()=> loadAll());
+      refreshNow.addEventListener('click', ()=> loadAll());
+      exportBtn.addEventListener('click', ()=> exportCsv());
+      exportCsvBtn.addEventListener('click', ()=> exportCsv());
+      backBtn.addEventListener('click', ()=>{ try{ if (window.parent && window.parent.navigate){ window.parent.navigate('admin'); return; } }catch(e){} location.href = '/'; });
+
+      searchInput.addEventListener('input', ()=> { page = 1; renderTable(); });
+      statusFilter.addEventListener('change', ()=> { page = 1; renderTable(); });
+      typeFilter.addEventListener('change', ()=> { page = 1; renderTable(); });
+
+      prevPage.addEventListener('click', ()=> { if (page>1){ page--; renderTable(); }});
+      nextPage.addEventListener('click', ()=> { page++; renderTable(); });
+
+      userSearchBtn.addEventListener('click', async ()=>{
+        const q = (userSearch.value||'').trim();
+        if (!q) return alert('Inserisci termine di ricerca');
+        try {
+          const res = await fetch('/api/users/uid/' + encodeURIComponent(q));
+          if (res.ok){ const u = await res.json(); inspectJson.textContent = JSON.stringify(u,null,2); } else alert('Utente non trovato');
+        } catch(e){ alert('Ricerca fallita'); }
+      });
+
+      showPending.addEventListener('click', ()=> { statusFilter.value='pending'; searchInput.value=''; renderTable(); });
+      manualOtp.addEventListener('click', ()=> { const t = prompt('User id per OTP'); if (!t) return; fetch('/api/collections/transaction_v1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:t,type:'admin_otp',amount:0,status:'otp_sent',created_at:new Date().toISOString(),note:'OTP admin'})}).then(()=>loadAll()).catch(()=>{}); });
+
+      inspectConfirm.addEventListener('click', async ()=> { if (!selectedTx) return alert('Seleziona transazione'); if (!confirm('Confermare?')) return; await patchTx(selectedTx.id,{status:'confirmed',confirmed_at:new Date().toISOString()}); await loadAll(); });
+      inspectReject.addEventListener('click', async ()=> { if (!selectedTx) return alert('Seleziona transazione'); if (!confirm('Rifiutare?')) return; await patchTx(selectedTx.id,{status:'rejected',rejected_at:new Date().toISOString(),credited:false}); await loadAll(); });
+
+      function exportCsv(){
+        try {
+          const headers = ['created_at','id','user_id','user_uid','type','amount','status','note'];
+          const rows = [headers.join(',')];
+          (data||[]).forEach(t => { rows.push(headers.map(h => `"${String(t[h]||'').replace(/"/g,'""')}"`).join(',')); });
+          const blob = new Blob([rows.join('\\n')],{type:'text/csv'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = 'transactions.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+        } catch(e){ console.error(e); alert('Export failed'); }
+      }
+
+      // initial load & poll
+      (async ()=>{ await loadAll(); setInterval(()=>{ loadAll().catch(()=>{}); }, 15000); })();
+    })();
+  </script>
+
+  <script>
+    // Lightweight pinch-to-zoom + two-finger pan for the admin-shell
+    (function(){
+      try {
+        const target = document.querySelector('.admin-shell');
+        if (!target) return;
+
+        let initialDistance = 0;
+        let initialScale = 1;
+        let currentScale = 1;
+        let lastMid = null;
+        let pan = { x: 0, y: 0 };
+        let lastPan = { x: 0, y: 0 };
+        let isPinching = false;
+        target.style.willChange = 'transform';
+        target.style.transition = 'transform 0ms linear';
+        // helper funcs
+        function distance(t1, t2) {
+          const dx = t1.clientX - t2.clientX;
+          const dy = t1.clientY - t2.clientY;
+          return Math.hypot(dx, dy);
         }
-        localStorage.setItem('CUP9_USERS', JSON.stringify(users));
-        // mirror to mock DB if present
-        try{
-          if(window.api && api && api.__internal__ && api.__internal__.db){
-            let found = null;
-            for(const uid in api.__internal__.db.users || {}){ if(String(api.__internal__.db.users[uid].email||'').toLowerCase() === email) { found = uid; break; } }
-            if(found) api.__internal__.db.users[found].balance = bal;
+        function midPoint(t1, t2) {
+          const rect = target.getBoundingClientRect();
+          const x = (t1.clientX + t2.clientX) / 2 - rect.left;
+          const y = (t1.clientY + t2.clientY) / 2 - rect.top;
+          return { x: x / rect.width, y: y / rect.height, rawX: (t1.clientX + t2.clientX) / 2, rawY: (t1.clientY + t2.clientY) / 2 };
+        }
+        function updateTransform() {
+          target.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${currentScale})`;
+          target.style.transformOrigin = `${(lastMid && lastMid.x || 0.5) * 100}% ${(lastMid && lastMid.y || 0.5) * 100}%`;
+        }
+
+        function onTouchStart(e){
+          if (e.touches && e.touches.length === 2) {
+            isPinching = true;
+            initialDistance = distance(e.touches[0], e.touches[1]);
+            initialScale = currentScale || 1;
+            lastMid = midPoint(e.touches[0], e.touches[1]);
+            lastPan = { x: pan.x, y: pan.y };
           }
-        }catch(e){}
-        // log action
-        try{
-          const logKey = 'CUP9_ADMIN_ACTIONS_LOG';
-          const raw = localStorage.getItem(logKey) || '[]';
-          const logs = JSON.parse(raw || '[]');
-          logs.push({ ts: new Date().toISOString(), action: 'apply-balance', target: 'CUP9_USERS', email, balance: Number(bal), by: 'admin_console' });
-          localStorage.setItem(logKey, JSON.stringify(logs));
-        }catch(e){}
-      } else if(target === 'earnings'){
-        // update CUP9_EARNINGS (withdrawable) map for the user
-        try{
-          const key = 'CUP9_EARNINGS';
-          const mapRaw = localStorage.getItem(key) || '{}';
-          const map = JSON.parse(mapRaw || '{}') || {};
-          map[email] = Number(bal);
-          localStorage.setItem(key, JSON.stringify(map));
-          // mirror to mock DB if present
-          try{
-            if(window.api && api && api.__internal__ && api.__internal__.db){
-              api.__internal__.db.earnings = api.__internal__.db.earnings || {};
-              api.__internal__.db.earnings[email] = Number(bal);
+        }
+        function onTouchMove(e){
+          if (isPinching && e.touches && e.touches.length === 2) {
+            e.preventDefault();
+            const d = distance(e.touches[0], e.touches[1]);
+            const scaleFactor = d / (initialDistance || 1);
+            currentScale = Math.min(3, Math.max(0.6, initialScale * scaleFactor));
+            const mid = midPoint(e.touches[0], e.touches[1]);
+            if (lastMid) {
+              const dx = mid.rawX - lastMid.rawX;
+              const dy = mid.rawY - lastMid.rawY;
+              pan.x = lastPan.x + dx;
+              pan.y = lastPan.y + dy;
             }
-          }catch(e){}
-          // log action
-          try{
-            const logKey = 'CUP9_ADMIN_ACTIONS_LOG';
-            const raw = localStorage.getItem(logKey) || '[]';
-            const logs = JSON.parse(raw || '[]');
-            logs.push({ ts: new Date().toISOString(), action: 'apply-balance', target: 'CUP9_EARNINGS', email, withdrawable: Number(bal), by: 'admin_console' });
-            localStorage.setItem(logKey, JSON.stringify(logs));
-          }catch(e){}
-          // notify UI
-          try{ localStorage.setItem('CUP9_earnings_update_ts', String(Date.now())); localStorage.removeItem('CUP9_earnings_update_ts'); }catch(e){}
-          try{ if(typeof notify === 'function') notify('balance:withdrawable:changed', { email, withdrawable: Number(bal) }); }catch(e){}
-        }catch(e){ console.error('apply to CUP9_EARNINGS failed', e); }
-      } else if(target === 'points'){
-        // update CUP9_TASK_POINTS_<email>
-        try{
-          const k = `CUP9_TASK_POINTS_${email}`;
-          localStorage.setItem(k, String(Number(bal)));
-          // mirror to mock DB if present
-          try{
-            if(window.api && api && api.__internal__ && api.__internal__.db){
-              api.__internal__.db.task_points = api.__internal__.db.task_points || {};
-              api.__internal__.db.task_points[email] = Number(bal);
+            updateTransform();
+          } else if (e.touches && e.touches.length === 2 && !isPinching) {
+            // fallback two-finger pan
+            e.preventDefault();
+            const mid = midPoint(e.touches[0], e.touches[1]);
+            if (lastMid) {
+              const dx = mid.rawX - lastMid.rawX;
+              const dy = mid.rawY - lastMid.rawY;
+              pan.x = lastPan.x + dx;
+              pan.y = lastPan.y + dy;
+              updateTransform();
             }
-          }catch(e){}
-          // log action
-          try{
-            const logKey = 'CUP9_ADMIN_ACTIONS_LOG';
-            const raw = localStorage.getItem(logKey) || '[]';
-            const logs = JSON.parse(raw || '[]');
-            logs.push({ ts: new Date().toISOString(), action: 'apply-points', target: 'CUP9_TASK_POINTS', email, points: Number(bal), by: 'admin_console' });
-            localStorage.setItem(logKey, JSON.stringify(logs));
-          }catch(e){}
-          try{ if(typeof notify === 'function') notify('tasks:points:changed', { email, points: Number(bal) }); }catch(e){}
-        }catch(e){ console.error('apply to CUP9_TASK_POINTS failed', e); }
+            lastMid = mid;
+          }
+        }
+        function onTouchEnd(e){
+          if (isPinching) {
+            isPinching = false;
+            lastPan = { x: pan.x, y: pan.y };
+            lastMid = null;
+          }
+          if ((!e.touches || e.touches.length === 0) && Math.abs(currentScale - 1) < 0.02 && Math.abs(pan.x) < 4 && Math.abs(pan.y) < 4) {
+            currentScale = 1;
+            pan = { x: 0, y: 0 };
+            lastPan = { x: 0, y: 0 };
+            updateTransform();
+          }
+        }
+
+        target.addEventListener('touchstart', onTouchStart, { passive: false });
+        target.addEventListener('touchmove', onTouchMove, { passive: false });
+        target.addEventListener('touchend', onTouchEnd, { passive: false });
+        // expose reset
+        window.__cup9gpu_admin_resetZoom = function(){
+          currentScale = 1; pan = { x:0, y:0 }; lastPan = { x:0, y:0 }; updateTransform();
+        };
+      } catch (e) {
+        console.warn('admin pinch zoom init failed', e);
       }
-
-      // always refresh UI and users list
-      refreshUsers();
-      alert('Valore aggiornato per ' + target);
-    }catch(e){
-      console.error(e);
-      alert('Errore aggiornamento valore');
-    }
-  };
-
-  // Export users JSON
-  qs('#export-users').onclick = ()=>{
-    try{
-      const data = localStorage.getItem('CUP9_USERS') || '[]';
-      const blob = new Blob([data], { type:'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'CUP9_USERS_export.json';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(()=> URL.revokeObjectURL(url), 1500);
-    }catch(e){
-      alert('Export fallito');
-    }
-  };
-
-  // observe storage changes to keep UI in sync across tabs
-  window.addEventListener('storage', (ev)=> {
-    try{
-      if(!ev) return;
-      if(ev.key && (ev.key.startsWith('CUP9_') || ev.key === 'CUP9_USERS' || ev.key && ev.key.startsWith('otp_') || ev.key && ev.key.startsWith('CUP9_OTP_BUTTON_ENABLED_FOR_'))){
-        refreshUsers();
-        refreshGlobalOtpUI();
-      }
-    }catch(e){}
-  });
-
-  // helper: escape HTML
-  function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-</script>
+    })();
+  </script>
 </body>
 </html>

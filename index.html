@@ -12,6 +12,25 @@
       "imports": {}
     };
   </script>
+
+  <!-- Ensure a canonical API base is available for the client to point at the real Render backend.
+       window.apiBase will be used by app.js to contact /api/collections on the same origin,
+       or can be overridden by environment injection (e.g., during Render deployment).
+  -->
+  <script>
+    (function(){
+      try {
+        // prefer a pre-set override (useful for CI / injected env)
+        // default to the live Render backend for this project to ensure the SPA talks to the real persistent API
+        window.apiBase = window.apiBase || 'https://gpu-ai-jtlb.onrender.com/api/collections';
+        // expose baseUrl for building referral/share links (point at deployed site)
+        window.baseUrl = window.baseUrl || 'https://gpu-ai-jtlb.onrender.com/';
+      } catch(e) {
+        window.apiBase = '/api/collections';
+        window.baseUrl = window.baseUrl || '/';
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
