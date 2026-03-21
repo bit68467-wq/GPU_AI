@@ -113,16 +113,27 @@ function load(){
     }
   });
 
-  // Ensure every user has a unique id and a referral code
+  // Ensure every user has a unique id, referral code, and initialized balances
   state.users = state.users.map((u, idx) => {
     const user = Object.assign({}, u);
     if(!user.id) user.id = 'u' + Date.now() + String(Math.floor(Math.random()*9000)+1000) + idx;
     if(!user.refCode) {
-      // simple alphanumeric referral code, uppercase, 6 chars
       user.refCode = ('R' + Math.random().toString(36).substring(2,8)).toUpperCase();
     }
+    // Ensure per-user balances exist and are numeric
+    user.depositBalance = Number(user.depositBalance || 0);
+    user.earnings = Number(user.earnings || 0);
     return user;
   });
+
+  // If any user has explicit balances, derive the global aggregates from per-user data
+  try{
+    const sumDeposit = state.users.reduce((s,u) => s + (Number(u.depositBalance) || 0), 0);
+    const sumEarnings = state.users.reduce((s,u) => s + (Number(u.earnings) || 0), 0);
+    // Only override global totals if any per-user values are present (avoid clobbering legacy global when empty)
+    if(sumDeposit > 0 || state.depositBalance > 0) state.depositBalance = sumDeposit > 0 ? +sumDeposit.toFixed(6) : state.depositBalance;
+    if(sumEarnings > 0 || state.earnings > 0) state.earnings = sumEarnings > 0 ? +sumEarnings.toFixed(6) : state.earnings;
+  }catch(e){ /* ignore aggregation errors */ }
 
   // Ensure servers have a lastAccrued timestamp so we can credit once-per-day reliably
   state.servers = (state.servers || []).map(s=>{
@@ -133,19 +144,34 @@ function load(){
     return copy;
   });
 
-  // persist any canonicalized user list (ids/refCodes may have been added)
+  // persist any canonicalized user list (ids/refCodes/balances may have been added)
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(state.users));
 }
 function save(){
-  // persist new split balances
+  // Ensure per-user numeric balances exist and compute aggregates
+  try{
+    state.users = state.users.map(u => {
+      u.depositBalance = Number(u.depositBalance || 0);
+      u.earnings = Number(u.earnings || 0);
+      return u;
+    });
+    const sumDeposit = state.users.reduce((s,u) => s + (Number(u.depositBalance) || 0), 0);
+    const sumEarnings = state.users.reduce((s,u) => s + (Number(u.earnings) || 0), 0);
+    // Keep aggregate values consistent with per-user data when present
+    if(sumDeposit > 0) state.depositBalance = +sumDeposit.toFixed(6);
+    if(sumEarnings > 0) state.earnings = +sumEarnings.toFixed(6);
+  }catch(e){ /* ignore */ }
+
+  // persist new split balances (global aggregates for compatibility)
   localStorage.setItem(STORAGE_KEYS.DEPOSIT_BALANCE, state.depositBalance);
   localStorage.setItem(STORAGE_KEYS.EARNINGS_BALANCE, state.earnings);
   // keep legacy key for backward compatibility (sum)
-  localStorage.setItem(STORAGE_KEYS.BALANCE, (state.depositBalance + state.earnings));
+  localStorage.setItem(STORAGE_KEYS.BALANCE, (Number(state.depositBalance || 0) + Number(state.earnings || 0)));
   localStorage.setItem(STORAGE_KEYS.SERVERS, JSON.stringify(state.servers));
   if(state.refCode) localStorage.setItem(STORAGE_KEYS.REF, state.refCode);
   localStorage.setItem(STORAGE_KEYS.DEPOSITS, JSON.stringify(state.deposits));
   localStorage.setItem(STORAGE_KEYS.WITHDRAWALS, JSON.stringify(state.withdrawals || []));
+  // persist users (now including depositBalance and earnings)
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(state.users));
   // persist sessions registry (keeps sessions info for all accounts in this browser)
   localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(state.sessions || []));
@@ -168,6 +194,11 @@ function save(){
   }catch(e){
     console.debug('Error persisting currentUser', e);
   }
+
+  // Mark a last-update timestamp so other tabs can detect changes and sync in near real-time
+  try{
+    localStorage.setItem('cup9_last_update', String(Date.now()));
+  }catch(e){ /* ignore */ }
 
   // Fire-and-forget sync to backend Render service to keep users/current user globally synced.
   // Service ID: srv-d6sc2nnafjfc73et5l20
@@ -542,7 +573,26 @@ function applyMissedAccruals(server){
   if(ticks > 0){
     const total = +(server.dailyRate * ticks).toFixed(6);
     server.accumulated += total;
-    state.earnings += total;
+
+    // Prefer per-user earnings: credit to the server owner if present, otherwise fall back to global earnings
+    const ownerName = server.owner || 'guest';
+    const owner = state.users.find(u => u.username === ownerName);
+    if(owner){
+      owner.earnings = +( (owner.earnings || 0) + total ).toFixed(6);
+    } else {
+      state.earnings += total;
+    }
+
+    // also update global aggregate for backward compatibility
+    if(!owner) state.earnings = +(state.earnings).toFixed(6);
+    else {
+      // recompute global earnings as sum of per-user earnings + any global leftover deposits/earnings
+      try{
+        const perUserSum = state.users.reduce((s,u)=> s + (u.earnings || 0), 0);
+        state.earnings = +perUserSum.toFixed(6);
+      }catch(e){}
+    }
+
     // advance lastAccrued by ticks * DAY_MS
     server.lastAccrued = last + ticks * DAY_MS;
     save();
@@ -562,7 +612,24 @@ function startServerProfitCycle(server){
   server._timer = setInterval(()=>{
     // Credit once
     server.accumulated += server.dailyRate;
-    state.earnings += server.dailyRate;
+
+    // Credit to owner user when possible
+    const ownerName = server.owner || 'guest';
+    const owner = state.users.find(u => u.username === ownerName);
+    if(owner){
+      owner.earnings = +( (owner.earnings || 0) + server.dailyRate ).toFixed(6);
+      // update global aggregate as sum of per-user earnings
+      try{
+        const perUserSum = state.users.reduce((s,u)=> s + (u.earnings || 0), 0);
+        state.earnings = +perUserSum.toFixed(6);
+      }catch(e){
+        state.earnings = +(state.earnings + server.dailyRate).toFixed(6);
+      }
+    } else {
+      // fallback: credit global earnings
+      state.earnings += server.dailyRate;
+    }
+
     // record when we credited
     server.lastAccrued = Date.now();
     save();
@@ -895,21 +962,44 @@ function renderHome(){
   if(depBtn) depBtn.addEventListener('click', ()=> openDepositModal());
   if(withBtn) withBtn.addEventListener('click', ()=> openWithdrawModal());
   if(checkBtn) checkBtn.addEventListener('click', ()=>{
-    // simple check-in: give a tiny earning and show toast (prevent spamming by storing last check-in in session)
-    const last = sessionStorage.getItem('lastCheckin') || '0';
+    // per-user check-in: give a small earning and prevent spam by storing lastCheckin on the user object
     const now = Date.now();
     const DAY_MS_LOCAL = 1000 * 60 * 60 * 24;
-    // allow once per real day (local), but in demo allow immediate small bonus if none
-    if(now - Number(last) < DAY_MS_LOCAL){
-      showToast('Hai già fatto il check-in oggi');
-      return;
-    }
+    const curUser = state.currentUser ? state.users.find(u => u.username === state.currentUser.username) : null;
     const bonus = 0.10; // small check-in bonus
-    state.earnings = +(state.earnings + bonus).toFixed(6);
-    sessionStorage.setItem('lastCheckin', String(now));
-    save();
-    showToast(`Check-in completato: +${fmt(bonus)} USDT`);
-    renderCurrentPage();
+
+    if(curUser){
+      const last = Number(curUser.lastCheckin || 0);
+      if(now - last < DAY_MS_LOCAL){
+        showToast('Hai già fatto il check-in oggi');
+        return;
+      }
+      // credit to the specific user's earnings
+      curUser.earnings = +( (curUser.earnings || 0) + bonus ).toFixed(6);
+      curUser.lastCheckin = now;
+      // update global aggregate as sum of per-user earnings
+      try{
+        const perUserSum = state.users.reduce((s,u)=> s + (Number(u.earnings) || 0), 0);
+        state.earnings = +perUserSum.toFixed(6);
+      }catch(e){
+        state.earnings = +(state.earnings + bonus).toFixed(6);
+      }
+      save();
+      showToast(`Check-in completato: +${fmt(bonus)} USDT`);
+      renderCurrentPage();
+    } else {
+      // guest fallback: use a temporary session-based check to avoid abuse in anonymous state
+      const last = Number(sessionStorage.getItem('lastCheckin') || 0);
+      if(now - last < DAY_MS_LOCAL){
+        showToast('Hai già fatto il check-in oggi');
+        return;
+      }
+      state.earnings = +(state.earnings + bonus).toFixed(6);
+      sessionStorage.setItem('lastCheckin', String(now));
+      save();
+      showToast(`Check-in completato: +${fmt(bonus)} USDT`);
+      renderCurrentPage();
+    }
   });
 
   // wire the tappable image logo to open the fullscreen company info modal
@@ -958,8 +1048,18 @@ function renderCatalog(){
   el.querySelectorAll('.buy-package').forEach(b=>{
     b.addEventListener('click', ()=>{
       const price = parseFloat(b.dataset.buy);
-      if(price > state.depositBalance){ showToast('Saldo deposito insufficiente. Deposita prima.'); return; }
-      state.depositBalance -= price;
+      // prefer per-user deposit balance
+      const curUserObj = state.currentUser ? state.users.find(u => u.username === state.currentUser.username) : null;
+      const userDeposit = curUserObj ? (curUserObj.depositBalance || 0) : state.depositBalance;
+      if(price > userDeposit){ showToast('Saldo deposito insufficiente. Deposita prima.'); return; }
+      // deduct from user's depositBalance when available, otherwise from global
+      if(curUserObj){
+        curUserObj.depositBalance = +( (curUserObj.depositBalance || 0) - price ).toFixed(6);
+        if(curUserObj.depositBalance < 0) curUserObj.depositBalance = 0;
+      } else {
+        state.depositBalance = +(state.depositBalance - price).toFixed(6);
+        if(state.depositBalance < 0) state.depositBalance = 0;
+      }
       createServer(price);
       save();
       showToast('Pacchetto acquistato e server attivato');
@@ -1729,8 +1829,18 @@ function wireHomeActions(){
     $('buyBtn').addEventListener('click', ()=>{
       const amt = parseFloat($('buyAmount').value||0);
       if(!amt || amt<=0){ showToast('Importo non valido'); return; }
-      if(amt > state.balance){ showToast('Saldo insufficiente. Deposita prima.'); return; }
-      state.balance -= amt;
+      // prefer per-user deposit balance
+      const curUserObj = state.currentUser ? state.users.find(u => u.username === state.currentUser.username) : null;
+      const userDeposit = curUserObj ? (curUserObj.depositBalance || 0) : state.depositBalance;
+      if(amt > userDeposit){ showToast('Saldo deposito insufficiente. Deposita prima.'); return; }
+      // deduct safely
+      if(curUserObj){
+        curUserObj.depositBalance = +( (curUserObj.depositBalance || 0) - amt ).toFixed(6);
+        if(curUserObj.depositBalance < 0) curUserObj.depositBalance = 0;
+      } else {
+        state.depositBalance = +(state.depositBalance - amt).toFixed(6);
+        if(state.depositBalance < 0) state.depositBalance = 0;
+      }
       createServer(amt);
       save();
       showToast('Server acquistato e attivato • accrediti giornalieri attivi');
