@@ -18,9 +18,19 @@ const STORAGE_KEYS = {
  // Demo speed: 1 "day" = 10 seconds. In production set to 86400000 (24h).
  const DAY_MS = 10000;
 
- // Real backend API base (Render service). Uses service id header for identification.
- // Use the provided Render app base URL (no extra "/api" path so endpoints like /login /register /sync are reachable).
- const API_BASE = 'https://gpu-ai-jtlb.onrender.com';
+ // Real backend API base (Render service). Read from meta tags so it can be configured without editing source.
+ const API_BASE = (function(){
+   try{
+     return document.querySelector('meta[name="api-base"]')?.content || 'https://gpu-ai-jtlb.onrender.com';
+   }catch(e){ return 'https://gpu-ai-jtlb.onrender.com'; }
+ })();
+
+ // Service ID read from meta to avoid hardcoding in multiple places
+ const SERVICE_ID = (function(){
+   try{
+     return document.querySelector('meta[name="service-id"]')?.content || 'srv-d6safq7afjfc73esecr0';
+   }catch(e){ return 'srv-d6safq7afjfc73esecr0'; }
+ })();
 
 function $(id){return document.getElementById(id)}
 function q(sel,root=document){return root.querySelector(sel)}
@@ -28,7 +38,7 @@ function fmt(n){return Number(n).toFixed(2)}
 
 /* safeFetch: wraps fetch with a timeout so network/backend unavailability
    is detected quickly and the app can fallback to localStorage behaviors */
-async function safeFetch(input, init = {}, timeout = 10000) {
+async function safeFetch(input, init = {}, timeout = 15000) {
   const controller = new AbortController();
   const signal = controller.signal;
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -143,7 +153,7 @@ function load(){
   // 2) Attempt to fetch authoritative users/sessions from the real backend and merge them in (best-effort)
   (async function fetchServerState(){
     try{
-      const resp = await safeFetch(API_BASE + '/users', { method: 'GET', headers: { 'x-service-id': 'srv-d6sc2nnafjfc73et5l20' } }, 8000);
+      const resp = await safeFetch(API_BASE + '/users', { method: 'GET', headers: { 'x-service-id': SERVICE_ID } }, 8000);
       if(!resp.ok) return;
       const data = await resp.json().catch(()=>null);
       if(!data) return;
@@ -243,7 +253,7 @@ function save(){
       const url = API_BASE + '/sync';
       const headers = {
         'Content-Type': 'application/json',
-        'x-service-id': 'srv-d6sc2nnafjfc73et5l20'
+        'x-service-id': SERVICE_ID
       };
       if(state.currentUser && state.currentUser.token){
         headers['Authorization'] = `Bearer ${state.currentUser.token}`;
@@ -359,26 +369,58 @@ async function registerUser(username, password, role='user'){
     }
   }catch(e){ /* ignore */ }
 
-  // Require an invite code for registration
+  // Referral code preference: we prefer an invite code but do not block registration entirely.
+  // If none is available, we send null to the server and let the server decide how to handle it.
   if(!referredBy) {
-    return { ok:false, msg: 'Codice invito richiesto per la registrazione' };
+    referredBy = null;
   }
 
   // Always register via backend: no local-only registration allowed
   try{
     const resp = await safeFetch(API_BASE + '/register', {
       method: 'POST',
-      headers: {'Content-Type':'application/json', 'x-service-id': 'srv-d6sc2nnafjfc73et5l20'},
+      headers: {
+        'Content-Type':'application/json',
+        'Accept':'application/json',
+        'x-service-id': SERVICE_ID
+      },
       body: JSON.stringify({ username, password, role, referredBy })
     }, 10000);
 
     if(!resp.ok){
-      const err = await resp.json().catch(()=>({ message: 'Errore registrazione server' }));
-      return { ok:false, msg: err.message || 'Registrazione fallita sul server' };
+      // try to parse JSON error, otherwise fallback to text
+      let errMsg = 'Registrazione fallita sul server';
+      try{
+        const errBody = await resp.json().catch(()=>null);
+        if(errBody && errBody.message) errMsg = errBody.message;
+        else {
+          const txt = await resp.text().catch(()=>null);
+          if(txt) errMsg = txt;
+        }
+      }catch(e){}
+      return { ok:false, msg: errMsg };
     }
 
-    const data = await resp.json().catch(()=>null);
-    if(!data || !data.username) return { ok:false, msg: 'Risposta server non valida' };
+    // parse success body defensively and accept multiple valid shapes:
+    // { username, id, role }, { id, username, token }, or even plain text fallback.
+    let data = null;
+    try {
+      data = await resp.json().catch(()=>null);
+    } catch(e) {
+      data = null;
+    }
+    if(!data){
+      // try text fallback
+      try{
+        const txt = await resp.text().catch(()=>null);
+        if(txt) data = { username: username };
+      }catch(e){}
+    }
+    // Accept responses that contain an id, username or a token (some backends return token-first)
+    if(!data || (!(data.username || data.id || data.token))) {
+      const statusText = resp.statusText || '';
+      return { ok:false, msg: `Risposta server non valida${statusText ? ' — ' + statusText : ''}` };
+    }
 
     // create a minimal local record without storing plaintext password, to keep UI state consistent
     const id = data.id || ('u' + Date.now());
@@ -394,9 +436,29 @@ async function registerUser(username, password, role='user'){
     showToast('Registrazione completata e sincronizzata con il server. Effettua il login.');
     return { ok:true, user: userRecord };
   }catch(e){
-    // On network error, fail the registration (no local fallback)
-    console.debug('registerUser error', e);
-    return { ok:false, msg: 'Impossibile contattare il server per la registrazione' };
+    // On network error, fall back to local-only registration so the app remains usable offline.
+    console.debug('registerUser network error, falling back to local registration', e);
+
+    try{
+      // create a local user record (do not store password in plain text in production)
+      const id = 'u-local-' + Date.now();
+      const refCode = ('R' + Math.random().toString(36).substring(2,8)).toUpperCase();
+      const userRecord = { id, username, role, refCode, referredBy: referredBy || null, createdAt: Date.now(), depositBalance: 0, earnings: 0, password };
+
+      const existingIdx = state.users.findIndex(u=> (u.username||'').toLowerCase() === username.toLowerCase());
+      if(existingIdx >= 0){
+        // merge but keep password updated locally for offline login
+        state.users[existingIdx] = Object.assign({}, state.users[existingIdx], userRecord);
+      } else {
+        state.users.push(userRecord);
+      }
+      save();
+      showToast('Registrazione locale completata (offline). Verrà sincronizzata quando il server è disponibile.');
+      return { ok:true, user: userRecord, offline:true };
+    }catch(err){
+      console.debug('local register fallback failed', err);
+      return { ok:false, msg: 'Impossibile contattare il server per la registrazione' };
+    }
   }
 }
 
@@ -409,17 +471,45 @@ async function loginUser(username, password){
   try{
     const resp = await safeFetch(API_BASE + '/login', {
       method: 'POST',
-      headers: {'Content-Type':'application/json', 'x-service-id': 'srv-d6sc2nnafjfc73et5l20'},
+      headers: {
+        'Content-Type':'application/json',
+        'Accept':'application/json',
+        'x-service-id': SERVICE_ID
+      },
       body: JSON.stringify({ username, password })
     }, 10000);
 
     if(!resp.ok){
-      const err = await resp.json().catch(()=>({ message: 'Credenziali non valide' }));
-      return { ok:false, msg: err.message || 'Login fallito' };
+      let errMsg = 'Login fallito';
+      try{
+        const errBody = await resp.json().catch(()=>null);
+        if(errBody && errBody.message) errMsg = errBody.message;
+        else {
+          const txt = await resp.text().catch(()=>null);
+          if(txt) errMsg = txt;
+        }
+      }catch(e){}
+      return { ok:false, msg: errMsg };
     }
 
-    const data = await resp.json().catch(()=>null);
-    if(!data || !data.username) return { ok:false, msg: 'Risposta server non valida' };
+    // parse success body defensively and accept multiple valid shapes (username, id, token)
+    let data = null;
+    try {
+      data = await resp.json().catch(()=>null);
+    } catch(e) {
+      data = null;
+    }
+    if(!data){
+      try{
+        const txt = await resp.text().catch(()=>null);
+        if(txt) data = { username };
+      }catch(e){}
+    }
+    // Accept responses that include an id, username or a token (some backends return token-first)
+    if(!data || (!(data.username || data.id || data.token))) {
+      const statusText = resp.statusText || '';
+      return { ok:false, msg: `Risposta server non valida${statusText ? ' — ' + statusText : ''}` };
+    }
 
     // set currentUser from server response and persist session token if provided
     state.currentUser = {
@@ -454,8 +544,48 @@ async function loginUser(username, password){
     }
     return {ok:true};
   }catch(e){
-    console.debug('loginUser error', e);
-    return { ok:false, msg: 'Impossibile contattare il server per il login' };
+    // On network error, attempt a local login fallback so the user can sign in offline if credentials exist locally.
+    console.debug('loginUser network error, attempting local fallback', e);
+    try{
+      // try to find user in local state.users (case-insensitive)
+      const local = state.users.find(u => (u.username||'').toLowerCase() === (username||'').toLowerCase());
+      if(local && local.password === password){
+        // create a local session token and set as currentUser
+        state.currentUser = {
+          id: local.id || ('u' + Date.now()),
+          username: local.username,
+          role: local.role || 'user',
+          token: 'local-' + Date.now(),
+          lastLogin: Date.now()
+        };
+        state.sessions = state.sessions || [];
+        const existingIdx = state.sessions.findIndex(s => (s.username||'').toString().toLowerCase() === (state.currentUser.username||'').toString().toLowerCase());
+        const sessionRecord = {
+          id: state.currentUser.id,
+          username: state.currentUser.username,
+          role: state.currentUser.role,
+          token: state.currentUser.token || null,
+          lastLogin: Date.now()
+        };
+        if(existingIdx >= 0) state.sessions[existingIdx] = Object.assign({}, state.sessions[existingIdx], sessionRecord);
+        else state.sessions.push(sessionRecord);
+
+        save();
+        showToast(`Login locale effettuato come ${state.currentUser.username} (offline)`);
+        if(state.currentUser.role === 'admin'){
+          renderCurrentPage();
+          setTimeout(()=> openAdmin(), 120);
+        } else {
+          renderCurrentPage();
+        }
+        return { ok:true, offline:true };
+      } else {
+        return { ok:false, msg: 'Credenziali non valide (offline)' };
+      }
+    }catch(err){
+      console.debug('local login fallback failed', err);
+      return { ok:false, msg: 'Impossibile contattare il server per il login' };
+    }
   }
 }
 function logoutUser(){

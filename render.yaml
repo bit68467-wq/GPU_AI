@@ -11,4 +11,6 @@ services:
       - key: PORT
         value: "3000"
       - key: SERVICE_ID
+        value: "srv-d6safq7afjfc73esecr0"
+      - key: STATIC_SERVICE_ID
         value: "srv-d6sc2nnafjfc73et5l20"
