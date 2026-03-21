@@ -15,8 +15,12 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'cup9_current_user' // retained for compatibility but currentUser remains in-memory
 };
 
-// Demo speed: 1 "day" = 10 seconds. In production set to 86400000 (24h).
-const DAY_MS = 10000;
+ // Demo speed: 1 "day" = 10 seconds. In production set to 86400000 (24h).
+ const DAY_MS = 10000;
+
+ // Real backend API base (Render service). Uses service id header for identification.
+ // Use the provided Render app base URL (no extra "/api" path so endpoints like /login /register /sync are reachable).
+ const API_BASE = 'https://gpu-ai-jtlb.onrender.com';
 
 function $(id){return document.getElementById(id)}
 function q(sel,root=document){return root.querySelector(sel)}
@@ -24,7 +28,7 @@ function fmt(n){return Number(n).toFixed(2)}
 
 /* safeFetch: wraps fetch with a timeout so network/backend unavailability
    is detected quickly and the app can fallback to localStorage behaviors */
-async function safeFetch(input, init = {}, timeout = 4000) {
+async function safeFetch(input, init = {}, timeout = 10000) {
   const controller = new AbortController();
   const signal = controller.signal;
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -211,7 +215,7 @@ function save(){
         meta: { syncedAt: Date.now(), source: 'client-local' }
       };
       // Use the provided render app base URL
-      const url = 'https://gpu-ai-jtlb.onrender.com/api/sync'; // server should expose an endpoint to accept sync
+      const url = API_BASE + '/sync'; // server should expose an endpoint to accept sync (uses API_BASE)
       // include service id as a header for server identification
       const headers = {
         'Content-Type': 'application/json',
@@ -376,9 +380,9 @@ async function registerUser(username, password, role='user'){
 
   // Then attempt to register on backend to keep server copy in sync and reconcile ids
   try{
-    const resp = await safeFetch('/api/register', {
+    const resp = await safeFetch(API_BASE + '/register', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type':'application/json', 'x-service-id': 'srv-d6sc2nnafjfc73et5l20'},
       body: JSON.stringify({ username, password, role, referredBy: localUser.referredBy })
     });
     if(resp.ok){
@@ -418,9 +422,9 @@ async function loginUser(username, password){
 
   // Try backend login
   try{
-    const resp = await safeFetch('/api/login', {
+    const resp = await safeFetch(API_BASE + '/login', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {'Content-Type':'application/json', 'x-service-id': 'srv-d6sc2nnafjfc73et5l20'},
       body: JSON.stringify({ username, password })
     });
     if(resp.ok){
