@@ -1,14 +1,14 @@
+# Render service blueprint (optional) — use this as a reference for Render web service setup
 services:
   - type: web
-    name: gpu-ai-backend
+    name: cup9gpu-backend-demo
     env: node
     plan: free
-    region: oregon
-    branch: main
-    buildCommand: "npm ci --silent && npm run build || true"
-    startCommand: "npm start"
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
       - key: PORT
-        value: "8000"
+        value: "3000"
+      - key: SERVICE_ID
+        value: "srv-d6sc2nnafjfc73et5l20"

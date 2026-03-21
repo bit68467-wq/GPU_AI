@@ -56,10 +56,9 @@ let state = {
 };
 
 function load(){
-  // load deposit & earnings balances (fall back to old BALANCE for compatibility)
+  // 1) Load local cached values first so UI can show something immediately
   state.depositBalance = parseFloat(localStorage.getItem(STORAGE_KEYS.DEPOSIT_BALANCE) || '0');
   state.earnings = parseFloat(localStorage.getItem(STORAGE_KEYS.EARNINGS_BALANCE) || '0');
-  // if old BALANCE exists and both new keys are zero, populate depositBalance for migration
   const legacy = parseFloat(localStorage.getItem(STORAGE_KEYS.BALANCE) || '0');
   if(legacy && !state.depositBalance && !state.earnings){
     state.depositBalance = legacy;
@@ -69,15 +68,12 @@ function load(){
   state.deposits = JSON.parse(localStorage.getItem(STORAGE_KEYS.DEPOSITS) || '[]');
   state.withdrawals = JSON.parse(localStorage.getItem(STORAGE_KEYS.WITHDRAWALS) || '[]');
   state.users = JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
-  // Load persisted sessions for all accounts so the app keeps a shared sessions registry across visits,
-  // sessions allow restoring logins across browser sessions and devices when backend token is available.
   state.sessions = JSON.parse(localStorage.getItem(STORAGE_KEYS.SESSIONS) || '[]');
 
-  // Attempt to restore a last active currentUser from persistent storage so users remain signed-in across reloads.
+  // Attempt to restore last active currentUser from persistent storage
   try{
     const persistedCurrent = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER) || 'null');
     if(persistedCurrent && persistedCurrent.username){
-      // Basic validation: ensure user still exists locally; backend will revalidate token on first API call.
       const localUser = state.users.find(u => u.username === persistedCurrent.username);
       state.currentUser = {
         id: persistedCurrent.id || (localUser && localUser.id) || ('u' + Date.now()),
@@ -86,7 +82,6 @@ function load(){
         token: persistedCurrent.token || null,
         lastLogin: persistedCurrent.lastLogin || Date.now()
       };
-      // also ensure session registry contains this session
       state.sessions = state.sessions || [];
       const idx = state.sessions.findIndex(s => (s.username||'').toLowerCase() === (state.currentUser.username||'').toLowerCase());
       const sessionRecord = {
@@ -94,7 +89,7 @@ function load(){
         username: state.currentUser.username,
         role: state.currentUser.role,
         token: state.currentUser.token || null,
-        lastLogin: state.currentUser.lastLogin || Date.now()
+        lastLogin: Date.now()
       };
       if(idx >= 0) state.sessions[idx] = Object.assign({}, state.sessions[idx], sessionRecord);
       else state.sessions.push(sessionRecord);
@@ -105,54 +100,90 @@ function load(){
     state.currentUser = null;
   }
 
-  // ensure at least the default admin accounts exist (bootstrap)
+  // Ensure default admin accounts exist locally as fallback
   const defaultAdmins = [
     { id:'u-admin', username:'admin.cup.9@yahoo.com', password:'admincup9', role:'admin', refCode: 'ADMIN1' },
     { id:'u-admin2', username:'admin@gmail.com', password:'9090', role:'admin', refCode: 'ADMIN2' }
   ];
-  // add any missing default admins without duplicating existing users
   defaultAdmins.forEach(def => {
     if(!state.users.find(u => u.username === def.username)){
       state.users.unshift(def);
     }
   });
 
-  // Ensure every user has a unique id, referral code, and initialized balances
+  // Normalize users locally
   state.users = state.users.map((u, idx) => {
     const user = Object.assign({}, u);
     if(!user.id) user.id = 'u' + Date.now() + String(Math.floor(Math.random()*9000)+1000) + idx;
-    if(!user.refCode) {
-      user.refCode = ('R' + Math.random().toString(36).substring(2,8)).toUpperCase();
-    }
-    // Ensure per-user balances exist and are numeric
+    if(!user.refCode) user.refCode = ('R' + Math.random().toString(36).substring(2,8)).toUpperCase();
     user.depositBalance = Number(user.depositBalance || 0);
     user.earnings = Number(user.earnings || 0);
     return user;
   });
 
-  // If any user has explicit balances, derive the global aggregates from per-user data
+  // Aggregate local balances if present
   try{
     const sumDeposit = state.users.reduce((s,u) => s + (Number(u.depositBalance) || 0), 0);
     const sumEarnings = state.users.reduce((s,u) => s + (Number(u.earnings) || 0), 0);
-    // Only override global totals if any per-user values are present (avoid clobbering legacy global when empty)
     if(sumDeposit > 0 || state.depositBalance > 0) state.depositBalance = sumDeposit > 0 ? +sumDeposit.toFixed(6) : state.depositBalance;
     if(sumEarnings > 0 || state.earnings > 0) state.earnings = sumEarnings > 0 ? +sumEarnings.toFixed(6) : state.earnings;
-  }catch(e){ /* ignore aggregation errors */ }
+  }catch(e){}
 
-  // Ensure servers have a lastAccrued timestamp so we can credit once-per-day reliably
+  // Ensure servers have lastAccrued
   state.servers = (state.servers || []).map(s=>{
     const copy = Object.assign({}, s);
     if(!copy.createdAt) copy.createdAt = Date.now();
-    // lastAccrued: timestamp (ms) when the last daily credit was applied; default to createdAt
     if(!copy.lastAccrued) copy.lastAccrued = copy.createdAt;
     return copy;
   });
 
-  // persist any canonicalized user list (ids/refCodes/balances may have been added)
+  // Persist any canonicalized local user list
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(state.users));
+
+  // 2) Attempt to fetch authoritative users/sessions from the real backend and merge them in (best-effort)
+  (async function fetchServerState(){
+    try{
+      const resp = await safeFetch(API_BASE + '/users', { method: 'GET', headers: { 'x-service-id': 'srv-d6sc2nnafjfc73et5l20' } }, 8000);
+      if(!resp.ok) return;
+      const data = await resp.json().catch(()=>null);
+      if(!data) return;
+      // server returns minimal user list; merge without overwriting local balances or passwords
+      if(Array.isArray(data.users) && data.users.length){
+        data.users.forEach(su=>{
+          const idx = state.users.findIndex(u=> (u.username||'').toLowerCase() === (su.username||'').toLowerCase());
+          if(idx >= 0){
+            // merge safe fields: id, username, role, refCode
+            state.users[idx].id = su.id || state.users[idx].id;
+            state.users[idx].role = su.role || state.users[idx].role;
+            if(su.refCode) state.users[idx].refCode = su.refCode;
+          } else {
+            // create a lightweight user record to avoid overwriting sensitive local fields
+            state.users.push({
+              id: su.id || ('u' + Date.now() + Math.floor(Math.random()*1000)),
+              username: su.username,
+              role: su.role || 'user',
+              refCode: su.refCode || ('R' + Math.random().toString(36).substring(2,8)).toUpperCase(),
+              depositBalance: 0,
+              earnings: 0,
+              createdAt: Date.now()
+            });
+          }
+        });
+        // persist after merge
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(state.users));
+      }
+      // merge sessions if provided
+      if(Array.isArray(data.sessions)){
+        state.sessions = data.sessions;
+        localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(state.sessions));
+      }
+    }catch(err){
+      console.debug('fetchServerState failed:', err);
+    }
+  })();
 }
 function save(){
-  // Ensure per-user numeric balances exist and compute aggregates
+  // Normalize per-user numeric balances and recompute aggregates
   try{
     state.users = state.users.map(u => {
       u.depositBalance = Number(u.depositBalance || 0);
@@ -161,27 +192,21 @@ function save(){
     });
     const sumDeposit = state.users.reduce((s,u) => s + (Number(u.depositBalance) || 0), 0);
     const sumEarnings = state.users.reduce((s,u) => s + (Number(u.earnings) || 0), 0);
-    // Keep aggregate values consistent with per-user data when present
     if(sumDeposit > 0) state.depositBalance = +sumDeposit.toFixed(6);
     if(sumEarnings > 0) state.earnings = +sumEarnings.toFixed(6);
   }catch(e){ /* ignore */ }
 
-  // persist new split balances (global aggregates for compatibility)
+  // persist local cache for immediate UI responsiveness
   localStorage.setItem(STORAGE_KEYS.DEPOSIT_BALANCE, state.depositBalance);
   localStorage.setItem(STORAGE_KEYS.EARNINGS_BALANCE, state.earnings);
-  // keep legacy key for backward compatibility (sum)
   localStorage.setItem(STORAGE_KEYS.BALANCE, (Number(state.depositBalance || 0) + Number(state.earnings || 0)));
   localStorage.setItem(STORAGE_KEYS.SERVERS, JSON.stringify(state.servers));
   if(state.refCode) localStorage.setItem(STORAGE_KEYS.REF, state.refCode);
   localStorage.setItem(STORAGE_KEYS.DEPOSITS, JSON.stringify(state.deposits));
   localStorage.setItem(STORAGE_KEYS.WITHDRAWALS, JSON.stringify(state.withdrawals || []));
-  // persist users (now including depositBalance and earnings)
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(state.users));
-  // persist sessions registry (keeps sessions info for all accounts in this browser)
   localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(state.sessions || []));
 
-  // Persist the currentUser (if present) so the session can be restored across reloads/browsers.
-  // We intentionally persist only safe session metadata (id, username, role, token if provided) so the app can rehydrate.
   try{
     if(state.currentUser){
       const safeUser = {
@@ -199,40 +224,43 @@ function save(){
     console.debug('Error persisting currentUser', e);
   }
 
-  // Mark a last-update timestamp so other tabs can detect changes and sync in near real-time
   try{
     localStorage.setItem('cup9_last_update', String(Date.now()));
-  }catch(e){ /* ignore */ }
+  }catch(e){}
 
-  // Fire-and-forget sync to backend Render service to keep users/current user globally synced.
-  // Service ID: srv-d6sc2nnafjfc73et5l20
+  // Stronger server sync: send the full application state to backend /sync (best-effort, but includes servers/deposits/withdrawals)
   (async function syncToBackend(){
     try{
-      // Minimal payload: users list and currentUser for server-side persistence.
       const payload = {
         users: state.users,
+        sessions: state.sessions,
         currentUser: state.currentUser,
+        servers: state.servers,
+        deposits: state.deposits,
+        withdrawals: state.withdrawals,
         meta: { syncedAt: Date.now(), source: 'client-local' }
       };
-      // Use the provided render app base URL
-      const url = API_BASE + '/sync'; // server should expose an endpoint to accept sync (uses API_BASE)
-      // include service id as a header for server identification
+      const url = API_BASE + '/sync';
       const headers = {
         'Content-Type': 'application/json',
         'x-service-id': 'srv-d6sc2nnafjfc73et5l20'
       };
-      // If we have a backend token for the current session, include it as Bearer token
       if(state.currentUser && state.currentUser.token){
         headers['Authorization'] = `Bearer ${state.currentUser.token}`;
       }
-      await safeFetch(url, {
+      const resp = await safeFetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
-      });
-      // intentionally ignore response; this is a best-effort sync
+      }, 10000);
+      // Optionally merge server response if server provides a canonical snapshot
+      if(resp && resp.ok){
+        const resJson = await resp.json().catch(()=>null);
+        if(resJson && resJson.ok && resJson.syncedAt){
+          // server accepted our sync; no further action necessary for demo
+        }
+      }
     }catch(err){
-      // if sync fails, keep local state intact; no user disruption
       console.debug('Backend sync failed:', err);
     }
   })();
@@ -308,13 +336,8 @@ async function registerUser(username, password, role='user'){
   password = (password||'').trim();
   if(!username || !password) return {ok:false, msg:'Username e password richiesti'};
 
-  // Ensure username is not already present locally
-  if(state.users.find(u=>u.username === username)) return {ok:false, msg:'Username già esistente'};
-
   // Detect referral code: prefer an explicit invite input on the auth form,
   // fall back to URL ?ref=CODE, and finally fall back to a recently copied/shared invite
-  // saved in localStorage by recordInvite(). This ensures a logged-in user who shared
-  // an invite causes the registering visitor to become a Level A subordinate.
   let referredBy = null;
   try{
     const manual = (document.getElementById('inviteCode') && document.getElementById('inviteCode').value) ? document.getElementById('inviteCode').value.trim() : '';
@@ -325,7 +348,6 @@ async function registerUser(username, password, role='user'){
       const refQ = (params.get('ref') || '').trim();
       if(refQ) referredBy = refQ.toUpperCase();
       else {
-        // fallback: check for last invite recorded locally (copy/share)
         try{
           const last = localStorage.getItem('cup9_last_invite');
           if(last){
@@ -342,76 +364,39 @@ async function registerUser(username, password, role='user'){
     return { ok:false, msg: 'Codice invito richiesto per la registrazione' };
   }
 
-  // Create local user first and persist to localStorage (guarantees local/global availability)
-  const id = 'u' + Date.now() + String(Math.floor(Math.random()*9000)+1000);
-  const refCode = ('R' + Math.random().toString(36).substring(2,8)).toUpperCase();
-
-  // Normalize referredBy: if a code or username was provided, try to resolve to the inviter user
-  // and store both the inviter's refCode (in referredBy) and inviter's username (as manager) so the
-  // three-level lookup can consistently follow refCode/username links.
-  let normalizedReferredBy = null;
-  let managerUsername = null;
-  if(referredBy){
-    const refKey = referredBy.toString().toUpperCase();
-    const inviter = state.users.find(u => ((u.refCode || '').toString().toUpperCase() === refKey) || ((u.username || '').toString().toUpperCase() === refKey));
-    if(inviter){
-      normalizedReferredBy = (inviter.refCode || inviter.username || '').toString().toUpperCase();
-      managerUsername = inviter.username;
-    } else {
-      // if we couldn't resolve, keep the provided code (uppercased) so it can still match if inviter appears later
-      normalizedReferredBy = refKey;
-    }
-  }
-
-  const localUser = { id, username, password, role, refCode, referredBy: normalizedReferredBy || null, manager: managerUsername || null, createdAt: Date.now() };
-  state.users.push(localUser);
-
-  // record that this user was invited (if referredBy present) for Team listings
-  if(normalizedReferredBy){
-    // resolve the inviter username if not already known
-    const refKey = normalizedReferredBy.toString().toUpperCase();
-    const inviter = state.users.find(u => (u.refCode || '').toString().toUpperCase() === refKey || (u.username || '').toString().toUpperCase() === refKey);
-    const inviterName = inviter ? inviter.username : (managerUsername || 'unknown');
-    // record invite with the correct inviter as "by" so Team page shows correct hierarchy
-    recordInvite({ code: normalizedReferredBy, by: inviterName, method: 'accepted', to: localUser.username });
-  }
-  save(); // save() will persist locally and start a best-effort background sync to backend
-  showToast('Registrazione salvata localmente. Tentativo di sincronizzazione in corso...');
-
-  // Then attempt to register on backend to keep server copy in sync and reconcile ids
+  // Always register via backend: no local-only registration allowed
   try{
     const resp = await safeFetch(API_BASE + '/register', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'x-service-id': 'srv-d6sc2nnafjfc73et5l20'},
-      body: JSON.stringify({ username, password, role, referredBy: localUser.referredBy })
-    });
-    if(resp.ok){
-      const data = await resp.json().catch(()=>null);
-      if(data && data.username){
-        // update local user record with any canonical server id/role returned (avoid losing password locally)
-        const idx = state.users.findIndex(u=>u.username===username);
-        if(idx>=0){
-          state.users[idx] = Object.assign(state.users[idx], {
-            id: data.id || state.users[idx].id,
-            role: data.role || state.users[idx].role
-          });
-          save();
-        }
-        showToast('Registrazione sincronizzata con server. Effettua il login.');
-        return { ok:true, user: data };
-      } else {
-        showToast('Registrazione locale creata; server ha risposto inaspettatamente.');
-        return { ok:true, user: localUser };
-      }
-    } else {
-      const err = await resp.json().catch(()=>({message:'Errore server'}));
-      showToast('Registrazione locale creata; sync server fallita.');
-      return { ok:true, user: localUser, msg: err.message || 'Registrazione fallita su server' };
+      body: JSON.stringify({ username, password, role, referredBy })
+    }, 10000);
+
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({ message: 'Errore registrazione server' }));
+      return { ok:false, msg: err.message || 'Registrazione fallita sul server' };
     }
+
+    const data = await resp.json().catch(()=>null);
+    if(!data || !data.username) return { ok:false, msg: 'Risposta server non valida' };
+
+    // create a minimal local record without storing plaintext password, to keep UI state consistent
+    const id = data.id || ('u' + Date.now());
+    const refCode = data.refCode || ('R' + Math.random().toString(36).substring(2,8)).toUpperCase();
+    const userRecord = { id, username: data.username, role: data.role || role, refCode, referredBy: referredBy || null, createdAt: Date.now(), depositBalance: 0, earnings: 0 };
+
+    // add or update local user metadata (but do NOT store password)
+    const existingIdx = state.users.findIndex(u=> (u.username||'').toLowerCase() === username.toLowerCase());
+    if(existingIdx >= 0) state.users[existingIdx] = Object.assign({}, state.users[existingIdx], userRecord);
+    else state.users.push(userRecord);
+
+    save();
+    showToast('Registrazione completata e sincronizzata con il server. Effettua il login.');
+    return { ok:true, user: userRecord };
   }catch(e){
-    // If backend unreachable, we keep the local registration and inform user that sync will be retried by save()
-    showToast('Registrazione locale creata; impossibile raggiungere il server ora.');
-    return { ok:true, user: localUser };
+    // On network error, fail the registration (no local fallback)
+    console.debug('registerUser error', e);
+    return { ok:false, msg: 'Impossibile contattare il server per la registrazione' };
   }
 }
 
@@ -420,79 +405,47 @@ async function loginUser(username, password){
   password = (password||'').trim();
   if(!username || !password) return {ok:false, msg:'Username e password richiesti'};
 
-  // Try backend login
+  // Always authenticate using the backend only; no local password fallback allowed.
   try{
     const resp = await safeFetch(API_BASE + '/login', {
       method: 'POST',
       headers: {'Content-Type':'application/json', 'x-service-id': 'srv-d6sc2nnafjfc73et5l20'},
       body: JSON.stringify({ username, password })
-    });
-    if(resp.ok){
-      const data = await resp.json();
-      // expected: { id, username, role, token? }
-      // store token when provided by backend to synchronize session across devices
-      state.currentUser = {
-        id: data.id || ('u' + Date.now()),
-        username: data.username || username,
-        role: data.role || 'user',
-        token: data.token || data.accessToken || null
-      };
+    }, 10000);
 
-      // Upsert a session record for this account so multiple accounts can be tracked/persisted
-      state.sessions = state.sessions || [];
-      const existingIdx = state.sessions.findIndex(s => (s.username||'').toString().toLowerCase() === (state.currentUser.username||'').toString().toLowerCase());
-      const sessionRecord = {
-        id: state.currentUser.id,
-        username: state.currentUser.username,
-        role: state.currentUser.role,
-        token: state.currentUser.token || null,
-        lastLogin: Date.now()
-      };
-      if(existingIdx >= 0) state.sessions[existingIdx] = Object.assign({}, state.sessions[existingIdx], sessionRecord);
-      else state.sessions.push(sessionRecord);
-
-      save();
-      showToast(`Login effettuato come ${state.currentUser.username} (${state.currentUser.role})`);
-      if(state.currentUser.role === 'admin'){
-        renderCurrentPage();
-        setTimeout(()=> openAdmin(), 120);
-      } else {
-        renderCurrentPage();
-      }
-      return {ok:true};
-    } else {
-      // Try a local fallback if server denies login (useful when backend unavailable or for local-only users)
-      const u = state.users.find(x=>x.username===username && x.password===password);
-      if(u){
-        state.currentUser = { id:u.id, username:u.username, role:u.role, token: null };
-        save();
-        showToast(`Login locale effettuato come ${u.username} (${u.role})`);
-        if(state.currentUser.role === 'admin'){
-          renderCurrentPage();
-          setTimeout(()=> openAdmin(), 120);
-        } else {
-          renderCurrentPage();
-        }
-        return {ok:true};
-      }
-      const err = await resp.json().catch(()=>({message:'Credenziali non valide'}));
-      return {ok:false, msg: err.message || 'Credenziali non valide'};
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({ message: 'Credenziali non valide' }));
+      return { ok:false, msg: err.message || 'Login fallito' };
     }
-  }catch(e){
-    // Fallback to local login if backend unreachable
-    const u = state.users.find(x=>x.username===username && x.password===password);
-    if(!u) return {ok:false, msg:'Credenziali non valide (fallback)'};
-    state.currentUser = { id:u.id, username:u.username, role:u.role, token: null };
 
-    // store local session record as well
+    const data = await resp.json().catch(()=>null);
+    if(!data || !data.username) return { ok:false, msg: 'Risposta server non valida' };
+
+    // set currentUser from server response and persist session token if provided
+    state.currentUser = {
+      id: data.id || ('u' + Date.now()),
+      username: data.username,
+      role: data.role || 'user',
+      token: data.token || data.accessToken || null,
+      lastLogin: Date.now()
+    };
+
+    // Upsert session in sessions registry
     state.sessions = state.sessions || [];
-    const existingLocal = state.sessions.findIndex(s => (s.username||'').toString().toLowerCase() === (u.username||'').toString().toLowerCase());
-    const localSession = { id: u.id, username: u.username, role: u.role, token: null, lastLogin: Date.now() };
-    if(existingLocal >= 0) state.sessions[existingLocal] = Object.assign({}, state.sessions[existingLocal], localSession);
-    else state.sessions.push(localSession);
+    const existingIdx = state.sessions.findIndex(s => (s.username||'').toString().toLowerCase() === (state.currentUser.username||'').toString().toLowerCase());
+    const sessionRecord = {
+      id: state.currentUser.id,
+      username: state.currentUser.username,
+      role: state.currentUser.role,
+      token: state.currentUser.token || null,
+      lastLogin: Date.now()
+    };
+    if(existingIdx >= 0) state.sessions[existingIdx] = Object.assign({}, state.sessions[existingIdx], sessionRecord);
+    else state.sessions.push(sessionRecord);
 
+    // Persist and update UI
     save();
-    showToast(`Login locale effettuato come ${u.username} (${u.role})`);
+    showToast(`Login effettuato come ${state.currentUser.username} (${state.currentUser.role})`);
     if(state.currentUser.role === 'admin'){
       renderCurrentPage();
       setTimeout(()=> openAdmin(), 120);
@@ -500,6 +453,9 @@ async function loginUser(username, password){
       renderCurrentPage();
     }
     return {ok:true};
+  }catch(e){
+    console.debug('loginUser error', e);
+    return { ok:false, msg: 'Impossibile contattare il server per il login' };
   }
 }
 function logoutUser(){
